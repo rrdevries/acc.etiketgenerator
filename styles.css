@@ -389,6 +389,7 @@ select {
   justify-content: center;
   text-align: center;
   gap: 0.9em;
+  width: 100%; /* laat children (o.a. omschrijving) de volle labelbreedte gebruiken */
 
   /* Fallback-scale vanuit JS (altijd alles tonen) */
   transform: scale(var(--k, 1));
@@ -403,9 +404,14 @@ select {
 
 .label-desc {
   display: block;
-  margin: 0 auto;
-  width: var(--desc-w, auto); /* wordt door JS gezet op specs-grid breedte */
+
+  /* Productomschrijving mag de beschikbare breedte gebruiken.
+     Default layout: volle breedte (gecentreerd via parent text-align).
+     Columns layout: neemt automatisch de linker kolom in (zie .layout-columns). */
+  margin: 0;
+  width: 100%;
   max-width: 100%;
+
   font-size: var(--fs-desc);
   line-height: 1.15;
   min-height: calc(2 * 1.15em); /* altijd ruimte voor 2 regels */
@@ -512,6 +518,7 @@ select {
     "desc specs"
     "footer specs";
   align-items: start;
+  width: 100%; /* voorkom 'shrink-to-content' zodat kolommen tegen linkerrand uitlijnen */
   gap: 0.5em 0.8em;
   text-align: left;
 }

@@ -439,18 +439,12 @@
     const desc = innerEl.querySelector(".label-desc");
     if (!desc) return;
 
-    // In columns-layout the description should use the natural left-column width.
-    if (innerEl.classList.contains("layout-columns")) {
-      desc.style.setProperty("--desc-w", "auto");
-      return;
-    }
-
-    const grid = innerEl.querySelector(".specs-grid");
-    if (!grid) return;
-
-    // offsetWidth is layout-breedte (niet beïnvloed door transform scale)
-    const w = grid.offsetWidth || grid.getBoundingClientRect().width;
-    desc.style.setProperty("--desc-w", w + "px");
+    /* Voorheen: description breedte syncen naar specs-grid, om line-wrap voorspelbaar te houden.
+       Nieuw: productomschrijving mag de beschikbare breedte gebruiken:
+       - Standard/Stacked: volle labelbreedte.
+       - Columns: linker kolom breedte (via CSS grid areas).
+       Daarom: eventuele oude inline overrides verwijderen. */
+    desc.style.removeProperty("--desc-w");
   }
 
   function descFitsInMaxLines(descEl, maxLines = 3) {
