@@ -1,0 +1,465 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <!--
+================================================================================
+LABEL GENERATOR — index.html (UI skeleton)
+--------------------------------------------------------------------------------
+This file contains the static UI structure (tabs, forms, containers).
+app.js binds behavior by querying element IDs/classes defined here.
+
+Conventions used in this file:
+- Tab buttons have: .tab-btn + data-tab-target="<panel-id>"
+- Tab panels have:  .tab-panel + id="<panel-id>"
+- Input IDs are stable API between HTML and JS; do not rename without updating app.js.
+
+Key containers app.js writes into:
+- #labelsGrid : live preview label cards (Single tab)
+- #dims       : calculated label sizes (W/H in cm)
+- #variant    : (optional / legacy) debug output — may be unused in current build
+- Batch tab has its own DOM refs, initialized by initBatchUI() in app.js.
+================================================================================
+-->
+
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Etiketten Generator</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <!-- App header: title/branding and primary navigation (tabs) -->
+      <header class="app-header">
+        <div class="brand">
+          <div class="brand-text">
+            <h1>Etiketten Generator<span class="version-badge">v1.1</span></h1>
+          </div>
+          <a
+            href="https://lifegoodsgroup.com/"
+            class="brand-logo-link"
+            aria-label="LifeGoods Group"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <img
+              src="assets/Lifegoods-logo.png"
+              alt="LifeGoods Group B.V."
+              class="client-logo"
+            />
+          </a>
+        </div>
+      </header>
+
+      <main class="app-main">
+        <nav class="tabs" role="tablist" aria-label="Etiketten Generator tabs">
+          <button
+            type="button"
+            class="tab-btn active"
+            role="tab"
+            id="tabBtnSingle"
+            aria-selected="true"
+            aria-controls="tab-single"
+            data-tab-target="tab-single"
+          >
+            Single-PDF
+          </button>
+          <button
+            type="button"
+            class="tab-btn"
+            role="tab"
+            id="tabBtnBulk"
+            aria-selected="false"
+            aria-controls="tab-bulk"
+            data-tab-target="tab-bulk"
+          >
+            Bulk-Upload
+          </button>
+          <button
+            type="button"
+            class="tab-btn"
+            role="tab"
+            id="tabBtnDoc"
+            aria-selected="false"
+            aria-controls="tab-doc"
+            data-tab-target="tab-doc"
+          >
+            Help
+          </button>
+        </nav>
+
+        <div class="tab-panels">
+          <!-- TAB: Single — manual input -> preview -> PDF generation -->
+          <div
+            id="tab-single"
+            class="tab-panel"
+            role="tabpanel"
+            aria-labelledby="tabBtnSingle"
+          >
+            <div class="single-split">
+              <section class="panel panel-form">
+                <h2>Gegevens</h2>
+
+                <div class="form-section">
+                  <h3 class="form-section-title">Doosspecificaties</h3>
+                  <div class="form-grid">
+                    <label class="field">
+                      <span>Length (L)</span>
+                      <input id="len" type="text" />
+                    </label>
+
+                    <label class="field">
+                      <span>Width (W)</span>
+                      <input id="wid" type="text" />
+                    </label>
+
+                    <label class="field">
+                      <span>Height (H)</span>
+                      <input id="hei" type="text" />
+                    </label>
+
+                    <label class="field">
+                      <span>G.W (KGS)</span>
+                      <input id="gw" type="text" />
+                    </label>
+
+                    <label class="field">
+                      <span>CBM</span>
+                      <input id="cbm" type="text" />
+                    </label>
+                  </div>
+                </div>
+
+                <div class="form-section">
+                  <h3 class="form-section-title">Etiketgegevens</h3>
+                  <div class="form-grid">
+                    <label class="field">
+                      <span>ERP</span>
+                      <input id="erp" type="text" />
+                    </label>
+
+                    <label class="field span-2">
+                      <span>Productomschrijving</span>
+                      <textarea id="desc" rows="3"></textarea>
+                    </label>
+
+                    <label class="field">
+                      <span>EAN</span>
+                      <input id="ean" type="text" />
+                    </label>
+
+                    <label class="field">
+                      <span>QTY (PCS)</span>
+                      <input id="qty" type="text" />
+                    </label>
+
+                    <label class="field">
+                      <span>Batch</span>
+                      <input id="batch" type="text" />
+                    </label>
+                  </div>
+                </div>
+
+                <div class="actions">
+                  <button id="btnGen" class="btn primary">Preview</button>
+                  <button id="btnPDF" class="btn success">Maak PDF</button>
+                </div>
+              </section>
+
+              <section class="panel panel-preview">
+                <!-- Preview area: app.js renders 4 labels as cards into #labelsGrid -->
+                <h2>Preview</h2>
+                <div id="labelsGrid" class="labels-grid"></div>
+              </section>
+            </div>
+
+            <section class="panel panel-dims">
+              <!-- Calculated dimensions: app.js writes label W/H (cm) rows into #dims -->
+              <h2>Berekende labelafmetingen (werkelijke cm)</h2>
+              <div class="dims-grid-head">
+                <div>Label</div>
+                <div>W</div>
+                <div>H</div>
+                <div>Variant</div>
+              </div>
+              <div id="dims" class="dims-grid"></div>
+            </section>
+          </div>
+
+          <!-- TAB: Bulk upload — file parsing, column mapping, bulk PDF generation -->
+          <div
+            id="tab-bulk"
+            class="tab-panel hidden"
+            role="tabpanel"
+            aria-labelledby="tabBtnBulk"
+          >
+            <section class="panel batch-panel">
+              <h2>Batch (Excel / CSV)</h2>
+
+              <div class="upload-row">
+                <label class="dropzone" id="dropzone">
+                  <input
+                    type="file"
+                    id="fileInput"
+                    accept=".xlsx,.xls,.csv"
+                    hidden
+                  />
+                  <span
+                    ><strong>Bestand kiezen</strong> of sleep hierheen (xlsx,
+                    xls, csv)</span
+                  >
+                </label>
+
+                <div class="batch-actions">
+                  <button type="button" id="btnPickFile" class="btn">
+                    Kies bestand…
+                  </button>
+                  <button type="button" id="btnTemplateCsv" class="btn">
+                    Template (CSV)
+                  </button>
+                  <button type="button" id="btnTemplateXlsx" class="btn">
+                    Template (XLSX)
+                  </button>
+                </div>
+              </div>
+
+              <div id="mappingWrap" class="mapping hidden">
+                <h3>Kolommen koppelen</h3>
+                <div id="mappingGrid" class="mapping-grid"></div>
+                <p class="hint">
+                  Automatisch gedetecteerd. Pas aan indien nodig.
+                </p>
+              </div>
+
+              <div id="previewWrap" class="table-wrap hidden">
+                <h3>Voorbeeld (eerste 5 rijen)</h3>
+                <div id="tablePreview" class="table-scroller"></div>
+              </div>
+
+              <div id="normWrap" class="norms hidden">
+                <h3>Normalisatie</h3>
+                <label
+                  ><input type="checkbox" id="optCommaDecimal" checked /> Komma
+                  als decimaal scheidingsteken (1,25 → 1.25)</label
+                >
+                <label
+                  ><input type="checkbox" id="optTrimSpaces" checked /> Spaties
+                  rondom waarden verwijderen</label
+                >
+              </div>
+
+              <div class="batch-controls hidden" id="batchControls">
+                <button type="button" id="btnRunBatch" class="btn primary">
+                  PDF’s genereren (batch)
+                </button>
+                <button
+                  type="button"
+                  id="btnAbortBatch"
+                  class="btn danger"
+                  disabled
+                >
+                  Stoppen
+                </button>
+              </div>
+
+              <div id="progressWrap" class="progress-wrap hidden">
+                <div class="progress-bar">
+                  <div id="progressBar" class="bar"></div>
+                </div>
+                <div class="progress-text">
+                  <span id="progressLabel">0 / 0</span>
+                  <span id="progressPhase"></span>
+                </div>
+              </div>
+
+              <div id="logWrap" class="log-wrap hidden">
+                <h3>Log</h3>
+                <div id="logList" class="log-list"></div>
+              </div>
+            </section>
+          </div>
+
+          <!-- TAB: Help — user-facing instructions + layout table (static content) -->
+          <div
+            id="tab-doc"
+            class="tab-panel hidden"
+            role="tabpanel"
+            aria-labelledby="tabBtnDoc"
+          >
+            <section class="panel">
+              <h2>Help</h2>
+
+              <div class="help-quickstart-grid">
+                <div class="help-quickstart-col">
+                  <h3>Snel starten (Single)</h3>
+                  <ul class="doc-list">
+                    <li>Vul alle gegevens in.</li>
+                    <li>
+                      Klik op <strong>Preview</strong> om het etiket te
+                      controleren.
+                    </li>
+                    <li>
+                      Klik <strong>Maak PDF</strong> voor de definitieve export.
+                    </li>
+                  </ul>
+                </div>
+
+                <div class="help-quickstart-col">
+                  <h3>Snel starten (Bulk)</h3>
+                  <ul class="doc-list">
+                    <li>Kies <strong>Bulk-Upload</strong>.</li>
+                    <li>Kies of sleep een bestand hier naar toe.</li>
+                    <li>Controleer of de kolommen goed gematched worden.</li>
+                    <li>Klik op <strong>PDF&apos;s genereren</strong>.</li>
+                    <li>Wacht tot het renderen klaar is.</li>
+                  </ul>
+                </div>
+              </div>
+
+              <h3>Belangrijkste regels</h3>
+              <ul class="doc-list">
+                <li>
+                  Doosmaten moeten tussen <strong>5</strong> en
+                  <strong>100</strong> cm liggen. Buiten dit bereik wordt het
+                  veld rood en verschijnt een melding.
+                </li>
+                <li>
+                  Labels zijn altijd <strong>10% kleiner</strong> dan het
+                  bijbehorende doosvlak (schaalfactor <strong>0,9</strong>).
+                </li>
+                <li>
+                  Bulk-Upload toont geen zichtbare preview per item; je krijgt
+                  alleen de eindresultaten (PDF’s/ZIP).
+                </li>
+              </ul>
+
+              <h3>Problemen oplossen</h3>
+              <ul class="doc-list">
+                <li>
+                  <strong>Veld rood / foutmelding</strong>: controleer of de
+                  waarde een getal is en tussen 5 en 100 cm ligt.
+                </li>
+                <li>
+                  <strong>Tekst past niet</strong>: verkort de
+                  productomschrijving of controleer of je doosmaten correct zijn
+                  (cm).
+                </li>
+                <li>
+                  <strong>PDF ontbreekt of lijkt leeg</strong>: meestal is één
+                  veld ongeldig; corrigeer de invoer en genereer opnieuw.
+                </li>
+              </ul>
+
+              <h3>Op ware grootte printen (voor drukker)</h3>
+              <ul class="doc-list">
+                <li>
+                  De PDF moet altijd op <strong>100%</strong> geprint worden
+                  (geen “Aanpassen”, “Fit”, “Shrink”, “Schaal naar papier”).
+                </li>
+                <li>
+                  Controleer de labelafmetingen in de tool bij
+                  <em>“Berekende labelafmetingen (werkelijke cm)”</em> en
+                  gebruik die maat als referentie.
+                </li>
+                <li>
+                  Vraag de leverancier om de PDF <strong>1:1</strong> te
+                  verwerken in hun printsoftware/RIP en geen automatische schaal
+                  toe te passen.
+                </li>
+              </ul>
+
+              <h3>Mogelijkheden lay-outs</h3>
+              <p class="muted help-muted">
+                Bepaald door de labelverhouding en de grootste maat:
+                <strong>ratio = W/H</strong>,
+                <strong>D = max(W,H)</strong> (cm).
+              </p>
+
+              <div class="help-table-wrap">
+                <table class="help-table">
+                  <thead>
+                    <tr>
+                      <th>Family</th>
+                      <th>Variant-regel</th>
+                      <th>Layout</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td><strong>Square</strong></td>
+                      <td>ratio ligt dicht bij 1 (±0,10)</td>
+                      <td>Standard</td>
+                    </tr>
+
+                    <tr>
+                      <td><strong>Portrait</strong></td>
+                      <td>Narrow: ratio &lt; 0,40</td>
+                      <td>Stacked</td>
+                    </tr>
+                    <tr>
+                      <td></td>
+                      <td>Standard: 0,40 ≤ ratio &lt; 0,65</td>
+                      <td>Stacked</td>
+                    </tr>
+                    <tr>
+                      <td></td>
+                      <td>Wide: ratio ≥ 0,65</td>
+                      <td>Standard</td>
+                    </tr>
+
+                    <tr>
+                      <td><strong>Landscape</strong></td>
+                      <td>Short: H/W &lt; 0,40</td>
+                      <td>Columns</td>
+                    </tr>
+                    <tr>
+                      <td></td>
+                      <td>Standard: 0,40 ≤ H/W &lt; 0,65</td>
+                      <td>Standard</td>
+                    </tr>
+                    <tr>
+                      <td></td>
+                      <td>High: H/W ≥ 0,65</td>
+                      <td>Standard</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <p class="muted help-muted">
+                Size class (op basis van D): <strong>Micro</strong> 5–&lt;10,
+                <strong>Small</strong> 10–&lt;25,
+                <strong>Medium</strong> 25–&lt;40,
+                <strong>Large</strong> 40–&lt;70,
+                <strong>Extra-Large</strong> 70–100 (cm).
+              </p>
+            </section>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <!-- Footer: versioning / attribution / notes (static) -->
+    <footer class="app-footer" role="contentinfo">
+      <div class="app-footer__inner">
+        © <span id="copyrightYear"></span>
+        <a href="http://studiord.nl" target="_blank" rel="noopener noreferrer"
+          >Studio RD</a
+        >
+        – onderdeel van Renée de Vries.
+      </div>
+    </footer>
+
+    <!-- libs -->
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+
+    <script src="app.js"></script>
+
+    <script>
+      document.getElementById("copyrightYear").textContent =
+        new Date().getFullYear();
+    </script>
+  </body>
+</html>

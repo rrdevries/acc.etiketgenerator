@@ -1,0 +1,986 @@
+/*
+================================================================================
+LABEL GENERATOR — styles.css  (BASE: styles_patched_v15.css)
+--------------------------------------------------------------------------------
+Goal of this stylesheet:
+- Provide a role-based color system using the company brand palette (huisstijl).
+- Keep UI readable: neutral surfaces for content, brand color for emphasis (CTA/active state),
+  semantic colors for status (error/success), and clear focus indication for accessibility.
+- Maintain stable layout rules for:
+  - Tabs and panels
+  - Single/Bulk forms
+  - Preview grid + label rendering (the .label / .label-inner structure)
+  - Help tab two-column quickstart layout
+
+IMPORTANT MAINTENANCE NOTES
+- Do not change selector names casually: app.js injects markup that relies on these classes.
+- Colors should be changed via :root variables (tokens) first; avoid sprinkling new hex values.
+- The preview placeholder is styled via .preview-placeholder (JS only toggles the class).
+================================================================================
+*/
+
+/* === Design tokens (colors, radii, shadows, unit conversions) === */
+:root {
+  /* Brand (huisstijl) */
+  --brand-primary: #2c3a6b;
+  --brand-primary-2: #313c6c;
+
+  /* Semantiek & UI-kleuren (toegepast volgens beperkte, rol-gebaseerde palette) */
+  --color-page-bg: #f6f7fa;
+  --color-surface: #ffffff;
+  --color-surface-2: #f8fafc;
+  --color-surface-3: #eef2f7;
+
+  --color-border: #dde3ee;
+  --color-border-strong: #cbd5e1;
+
+  --color-text: #111;
+  --color-muted: #6b7280;
+
+  --color-focus: #6366f1;
+  --color-danger: #d32f2f;
+  --color-success: #166534;
+
+  /* Backwards-compatible names used elsewhere */
+  --brand-accent: var(--brand-primary);
+  --brand-text: var(--brand-primary-2);
+
+  --px-per-cm: 37.7952755906;
+  --ui-radius: 12px;
+  --ui-border: var(--color-border);
+  --ui-bg: var(--color-surface);
+  --text: var(--color-text);
+  --muted: var(--color-muted);
+  --shadow: 0 12px 28px rgba(0, 0, 0, 0.06);
+
+  /* compat voor oudere batch styles */
+  --panel: var(--ui-bg);
+  --bd: var(--ui-border);
+
+  --border-1px: 1px;
+  --code-radius: 0;
+
+  /* Aliases for legacy variable names (used in v14 layout) */
+  --bg: var(--color-page-bg); /* page background */
+  --surface: var(--color-surface); /* cards/panels */
+  --surface-2: var(--color-surface-2); /* inputs/secondary */
+  --surface-3: var(--color-surface-3); /* hover */
+  --border: var(--color-border);
+  --border-soft: var(--color-border);
+  --focus: rgba(99, 102, 241, 0.28); /* derived from --color-focus */
+  --danger: var(--color-danger);
+  --danger-soft: rgba(211, 47, 47, 0.16);
+  --success: var(--color-success);
+}
+
+/* === Base document styles (typography + page background) === */
+html,
+body {
+  margin: 0;
+  font-family: Arial, Helvetica, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Prevent layout "jump" when switching between tabs with/without vertical scrollbar */
+html {
+  scrollbar-gutter: stable;
+}
+
+@supports not (scrollbar-gutter: stable) {
+  html {
+    overflow-y: scroll;
+  }
+}
+
+body {
+  margin: 0;
+  font-family: Arial, Helvetica, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+}
+/* Ensure all form controls use the same base font */
+input,
+textarea,
+select {
+  font-family: inherit;
+}
+
+/* ===== Layout ===== */
+
+/* === App shell: width constraints + global spacing === */
+.app {
+  flex: 1;
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+
+  display: flex;
+  flex-direction: column;
+}
+
+.app-header {
+  padding: 20px 18px 10px;
+}
+
+.brand {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.brand-text h1 {
+  margin: 0;
+  color: var(--brand-text);
+  font-size: 28px;
+  letter-spacing: -0.02em;
+}
+
+.version-badge {
+  margin-left: 10px;
+  font-size: 13px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--ui-border);
+  color: #555;
+}
+
+.subtitle {
+  margin: 6px 0 0;
+  color: var(--muted);
+}
+
+.client-logo {
+  height: 46px;
+  width: auto;
+}
+
+.app-main {
+  flex: 1;
+  padding-bottom: 28px;
+}
+
+.card {
+  border: 1px solid var(--ui-border);
+  background: var(--ui-bg);
+  border-radius: var(--ui-radius);
+  padding: 16px;
+  box-shadow: var(--shadow);
+}
+
+.card h2 {
+  margin: 0 0 12px;
+  font-size: 18px;
+  color: var(--brand-text);
+}
+
+/* ===== Form ===== */
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 10px 12px;
+  align-items: end;
+}
+
+/* Single input grouping */
+.form-section {
+  margin-top: 12px;
+}
+
+.form-section + .form-section {
+  margin-top: 18px;
+}
+
+.form-section-title {
+  margin: 2px 0 12px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--brand-text);
+}
+
+.field label {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.field input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--ui-border);
+  border-radius: 10px;
+  padding: 10px 10px;
+  font-size: 13px;
+  background: var(--surface-2);
+  font-family: inherit;
+}
+
+.field > span {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.field textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--ui-border);
+  border-radius: 10px;
+  padding: 10px 10px;
+  font-size: 13px;
+  background: var(--surface-2);
+  resize: vertical;
+  min-height: 68px;
+  font-family: inherit;
+}
+
+.actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 12px;
+}
+
+.btn {
+  border: 1px solid var(--color-border);
+  padding: 10px 16px;
+  border-radius: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  background: var(--color-surface-2);
+  color: var(--brand-text);
+}
+
+.btn:hover {
+  background: var(--color-surface-3);
+}
+
+.btn:focus-visible {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.btn.primary {
+  background: var(--brand-primary);
+  border-color: transparent;
+  color: #fff;
+}
+
+.btn.primary:hover {
+  background: var(--brand-primary-2);
+}
+
+.btn.success {
+  /* behoud bestaande class, maar maak ‘m gelijk aan primary (merk-CTA) */
+  background: var(--brand-primary);
+  border-color: transparent;
+  color: #fff;
+}
+
+.btn.success:hover {
+  background: var(--brand-primary-2);
+}
+
+.btn.danger {
+  background: var(--color-danger);
+  border-color: transparent;
+  color: #fff;
+}
+
+.btn.danger:hover {
+  background: #991b1b;
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ===== Dims pills ===== */
+.pills {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.pill {
+  background: #eef2f7;
+  border: 1px solid #dde3ee;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    "Courier New", monospace;
+  font-size: 13px;
+}
+
+/* ===== Labels grid ===== */
+
+/* === Preview grid: 2x2 label cards on Single tab === */
+.labels-grid {
+  display: grid;
+  grid-template-columns: repeat(2, auto);
+  justify-content: center;
+  gap: 0;
+  padding: 12px 0 6px;
+}
+
+.label-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+/* === Label rendering: outer box matches computed size; padding set by JS === */
+.label {
+  border: var(--border-1px) solid #000;
+  background: var(--surface-2);
+  width: 100px;
+  height: 100px;
+  font-family: Arial, Helvetica, sans-serif;
+  display: flex;
+  position: relative;
+  overflow: hidden;
+}
+
+.label-num {
+  font-size: 10px;
+  color: #777;
+  padding-left: 2px;
+}
+
+/* ====== LABEL CONTENT ====== */
+
+/* === Label inner: contains .label-content; bucket typography sets CSS vars === */
+.label-inner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+
+  /* Typography vars (bucket-driven). Defaults are safe fallbacks. */
+  --fs-erp: 18px;
+  --fs-desc: 12px;
+  --fs-label: 10px;
+  --fs-text: 10px;
+  --fs-footer: 9px;
+
+  /* baseline */
+  font-size: var(--fs-text);
+  padding: var(--inner-pad, 0);
+}
+
+.label-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 0.9em;
+
+  /* Fallback-scale vanuit JS (altijd alles tonen) */
+  transform: scale(var(--k, 1));
+  transform-origin: center;
+  will-change: transform;
+}
+
+.label-content .line {
+  text-align: center;
+  line-height: 1.15;
+}
+
+.label-desc {
+  display: block;
+  margin: 0 auto;
+  width: var(--desc-w, auto); /* wordt door JS gezet op specs-grid breedte */
+  max-width: 100%;
+  font-size: var(--fs-desc);
+  line-height: 1.15;
+  min-height: calc(2 * 1.15em); /* altijd ruimte voor 2 regels */
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: pre-line;
+}
+
+/* Structural wrappers (needed for bucket layouts) */
+.erp-box {
+  display: flex;
+  justify-content: center;
+}
+
+.footer-text {
+  font-size: var(--fs-footer);
+  line-height: 1.1;
+  text-transform: uppercase;
+}
+
+/* Bucket-scaled ERP box */
+.code-box {
+  display: inline-block;
+  font-size: var(--fs-erp);
+  font-weight: 900;
+  letter-spacing: 0.02em;
+
+  border: clamp(1px, 0.18em, 3px) solid #000;
+  padding: clamp(1px, 0.14em, 2px) clamp(2px, 0.4em, 6px);
+  border-radius: var(--code-radius);
+  line-height: 1.1;
+}
+
+.block-spacer {
+  height: 0.25em;
+}
+
+.specs-grid {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0.35em 0.9em;
+  align-items: baseline;
+  text-align: left;
+}
+
+.specs-grid .key {
+  font-weight: 900;
+  font-size: var(--fs-label);
+  white-space: nowrap;
+}
+
+.specs-grid .val {
+  font-size: var(--fs-text);
+}
+
+/* ===== Bucket-dependent layouts ===== */
+/* Standard is the default (centered, 2-column specs). */
+
+/* Stacked: keys/values stacked vertically, left-aligned. */
+.label-inner.layout-stacked .label-content {
+  align-items: flex-start;
+  text-align: left;
+}
+
+.label-inner.layout-stacked .erp-box {
+  margin-left: 0;
+  margin-right: auto;
+}
+
+.label-inner.layout-stacked .product-desc {
+  text-align: left;
+  margin-left: 0;
+  margin-right: auto;
+}
+
+.label-inner.layout-stacked .specs-grid {
+  grid-template-columns: 1fr;
+  justify-items: start;
+  column-gap: 0;
+  row-gap: 0.25em;
+}
+
+.label-inner.layout-stacked .specs-grid .key {
+  margin-top: 0.55em;
+}
+
+.label-inner.layout-stacked .specs-grid .val {
+  margin-bottom: 0.55em;
+}
+
+.label-inner.layout-stacked .footer-text {
+  text-align: left;
+  margin-left: 0;
+  margin-right: auto;
+}
+
+/* Columns: product description left, specs column on the right. */
+.label-inner.layout-columns .label-content {
+  display: grid;
+  grid-template-columns: 1.15fr 0.85fr;
+  grid-template-rows: auto 1fr auto;
+  grid-template-areas:
+    "erp specs"
+    "desc specs"
+    "footer specs";
+  align-items: start;
+  gap: 0.5em 0.8em;
+  text-align: left;
+}
+
+.label-inner.layout-columns .erp-box {
+  grid-area: erp;
+  justify-self: start;
+  justify-content: flex-start;
+  margin: 0;
+}
+
+.label-inner.layout-columns .product-desc {
+  grid-area: desc;
+  justify-self: start;
+  text-align: left;
+  margin: 0;
+}
+
+.label-inner.layout-columns .specs-grid {
+  grid-area: specs;
+  width: 100%;
+  justify-items: start;
+}
+
+.label-inner.layout-columns .footer-text {
+  grid-area: footer;
+  justify-self: start;
+  text-align: left;
+  margin: 0;
+}
+
+.nowrap-mode .specs-grid .val {
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+.softwrap-mode .specs-grid .val {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* ===== Single-PDF split layout ===== */
+.single-split {
+  display: grid;
+  /* Links 1/3 (invoer), rechts 2/3 (preview) */
+  grid-template-columns: minmax(320px, 1fr) minmax(520px, 2fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.panel-form,
+.panel-preview {
+  min-width: 0;
+}
+
+.panel-form .form-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.field.span-2 {
+  grid-column: span 2;
+}
+
+.panel-preview .labels-grid {
+  padding-top: 6px;
+}
+
+.panel-dims {
+  margin-top: 18px;
+}
+
+@media (max-width: 980px) {
+  .single-split {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Responsive */
+@media (max-width: 980px) {
+  .form-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .pills {
+    grid-template-columns: 1fr;
+  }
+  .labels-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ===== Panels (compat) ===== */
+
+/* === Panel surfaces: card-like containers for each section === */
+.panel {
+  border: 1px solid var(--ui-border);
+  background: var(--ui-bg);
+  border-radius: var(--ui-radius);
+  padding: 16px;
+  box-shadow: var(--shadow);
+}
+
+.panel h2 {
+  margin: 0 0 12px;
+  font-size: 18px;
+  color: var(--brand-text);
+}
+
+.dims-grid-head,
+.dims-grid {
+  display: grid;
+  grid-template-columns: 1fr 0.6fr 0.6fr 1fr;
+  gap: 6px 10px;
+}
+
+.dims-grid-head {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.dim {
+  background: #f6f7f9;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+.dim:nth-child(4n + 2),
+.dim:nth-child(4n + 3) {
+  text-align: right;
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ===== Batch UI ===== */
+.batch-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.upload-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.dropzone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 56px;
+  padding: 10px 14px;
+  border: 2px dashed var(--border);
+  border-radius: 12px;
+  background: var(--surface-2);
+  color: var(--brand-text);
+  cursor: pointer;
+  flex: 1;
+}
+.dropzone.dragover {
+  background: var(--surface);
+  border-color: var(--brand-accent);
+}
+
+.batch-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* Offscreen render host (batch): keep it out of view without display:none (html2canvas needs it rendered) */
+.batch-render-host {
+  position: fixed;
+  left: -10000px;
+  top: 0;
+  width: 1100px; /* stable width for computePreviewScale */
+  background: var(--surface-2);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.mapping-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px 16px;
+}
+.mapping-grid .map-row {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: 6px;
+  align-items: center;
+}
+.mapping-grid label {
+  color: var(--brand-text);
+}
+.mapping-grid select {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+
+.table-wrap {
+  background: var(--surface-2);
+  border: 1px solid var(--ui-border);
+  border-radius: 10px;
+  padding: 8px;
+}
+.table-scroller {
+  overflow: auto;
+  max-height: 260px;
+  border-radius: 8px;
+}
+
+.progress-wrap {
+  display: grid;
+  gap: 8px;
+}
+.progress-bar {
+  height: 10px;
+  background: var(--border-soft);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.progress-bar .bar {
+  height: 100%;
+  width: 0;
+  background: var(--brand-accent);
+}
+.progress-text {
+  display: flex;
+  justify-content: space-between;
+  color: var(--brand-text);
+  font-size: 13px;
+}
+
+.log-wrap {
+  background: var(--surface-2);
+  border: 1px solid var(--ui-border);
+  border-radius: 10px;
+  padding: 10px;
+}
+.log-list {
+  display: grid;
+  gap: 6px;
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    "Courier New", monospace;
+  font-size: 12px;
+}
+.log-list .ok {
+  color: var(--success);
+}
+.log-list .err {
+  color: var(--danger);
+}
+
+/* ====== Tabs ====== */
+
+/* === Tabs: button row + active state styling === */
+.tabs {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 14px;
+  padding: 0 4px;
+  border-bottom: 1px solid var(--ui-border);
+}
+
+.tab-btn {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  padding: 10px 12px;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  color: var(--brand-text);
+  border-bottom: 2px solid transparent;
+}
+
+.tab-btn:hover {
+  color: var(--brand-text);
+}
+
+.tab-btn.active {
+  color: var(--brand-text);
+  border-bottom-color: var(--brand-accent);
+}
+
+.tab-panels {
+  min-width: 0;
+}
+
+.tab-panel {
+  display: block;
+}
+
+.doc-list {
+  margin-top: 8px;
+}
+
+@media (max-width: 640px) {
+  .tabs {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* Single UI validation */
+.field input.is-invalid {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 3px var(--danger-soft);
+}
+
+.field-error {
+  margin-top: 6px;
+  color: var(--danger);
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+/* ===== Footer ===== */
+body {
+  min-height: 100vh;
+}
+
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-main {
+  flex: 1;
+}
+
+.app-footer {
+  width: 100%;
+  background: var(--surface);
+  border-top: 1px solid var(--ui-border);
+  padding: 10px 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.app-footer__inner {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0 18px;
+
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+}
+
+.app-footer a {
+  color: var(--brand-text);
+  text-decoration: none;
+}
+
+.app-footer a:focus-visible {
+  outline: 2px solid var(--brand-accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.app-footer a:hover {
+  color: var(--brand-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* Help tab: two-column quick start blocks */
+
+/* === Help tab: two-column quickstart layout (responsive) === */
+.help-quickstart-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin: 10px 0 6px;
+}
+.help-quickstart-col {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.help-quickstart-col h3 {
+  margin-top: 0;
+}
+@media (max-width: 760px) {
+  .help-quickstart-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Focus styles */
+.field input:focus-visible,
+.field textarea:focus-visible,
+select:focus-visible,
+.tab-btn:focus-visible,
+.btn:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* Help tab */
+.muted {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.help-muted {
+  margin-top: 6px;
+}
+
+.help-table-wrap {
+  overflow-x: auto;
+  margin-top: 8px;
+}
+
+.help-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.help-table th,
+.help-table td {
+  text-align: left;
+  padding: 8px;
+  border-bottom: 1px solid var(--border-soft);
+  vertical-align: top;
+}
+
+.help-table thead th {
+  font-weight: 700;
+  color: var(--brand-text);
+  background: var(--surface);
+}
+
+.help-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+/* === Empty preview state: shown when no Single input is provided yet === */
+.preview-placeholder {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 28px 16px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  color: var(--muted);
+}
