@@ -389,7 +389,6 @@ select {
   justify-content: center;
   text-align: center;
   gap: 0.9em;
-  width: 100%; /* laat children (o.a. omschrijving) de volle labelbreedte gebruiken */
 
   /* Fallback-scale vanuit JS (altijd alles tonen) */
   transform: scale(var(--k, 1));
@@ -404,24 +403,14 @@ select {
 
 .label-desc {
   display: block;
-
-  /* Productomschrijving mag de beschikbare breedte gebruiken.
-     Default layout: volle breedte (gecentreerd via parent text-align).
-     Columns layout: neemt automatisch de linker kolom in (zie .layout-columns). */
-  margin: 0;
-  width: 100%;
+  margin: 0 auto;
+  width: var(--desc-w, auto); /* wordt door JS gezet op specs-grid breedte */
   max-width: 100%;
-
   font-size: var(--fs-desc);
   line-height: 1.15;
-  min-height: calc(2 * 1.15em); /* altijd ruimte voor 2 regels */
-  /*
-    Wrapping-beleid voor productomschrijving:
-    - 'anywhere' kan woorden middenin breken en (bij smalle kolommen) tekst 'verticaal' laten lijken.
-    - 'break-word' is milder: breekt pas als het nodig is om overflow te voorkomen.
-  */
-  overflow-wrap: break-word;
-  word-break: normal;
+  min-height: calc(3 * 1.15em); /* reserveer ruimte voor max. 3 regels */
+  overflow-wrap: anywhere;
+  word-break: break-word;
   white-space: pre-line;
 }
 
@@ -516,14 +505,13 @@ select {
 /* Columns: product description left, specs column on the right. */
 .label-inner.layout-columns .label-content {
   display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+  grid-template-columns: 1.15fr 0.85fr;
   grid-template-rows: auto 1fr auto;
   grid-template-areas:
     "erp specs"
     "desc specs"
     "footer specs";
   align-items: start;
-  width: 100%; /* voorkom 'shrink-to-content' zodat kolommen tegen linkerrand uitlijnen */
   gap: 0.5em 0.8em;
   text-align: left;
 }
@@ -546,12 +534,6 @@ select {
   grid-area: specs;
   width: 100%;
   justify-items: start;
-  /*
-    In columns-layout willen we nooit dat een lange waarde de rechter kolom
-    buiten het etiket duwt. Clipping gebeurt in de cellen (val), maar we
-    houden ook de grid zelf binnen de beschikbare breedte.
-  */
-  overflow: hidden;
 }
 
 .label-inner.layout-columns .footer-text {
@@ -561,21 +543,10 @@ select {
   margin: 0;
 }
 
-/* Prevent grid children from forcing the columns wider than the label */
-.label-inner.layout-columns .product-desc,
-.label-inner.layout-columns .specs-grid,
-.label-inner.layout-columns .erp-box,
-.label-inner.layout-columns .footer-text {
-  min-width: 0;
-}
-
 .nowrap-mode .specs-grid .val {
   white-space: nowrap;
   overflow-wrap: normal;
   word-break: normal;
-  /* Clip + ellipsis i.p.v. extreme schaal-down */
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .softwrap-mode .specs-grid .val {

@@ -439,12 +439,15 @@
     const desc = innerEl.querySelector(".label-desc");
     if (!desc) return;
 
-    /* Voorheen: description breedte syncen naar specs-grid, om line-wrap voorspelbaar te houden.
-       Nieuw: productomschrijving mag de beschikbare breedte gebruiken:
-       - Standard/Stacked: volle labelbreedte.
-       - Columns: linker kolom breedte (via CSS grid areas).
-       Daarom: eventuele oude inline overrides verwijderen. */
-    desc.style.removeProperty("--desc-w");
+    /*
+      Description width policy (v1.1):
+      - The product description should be allowed to use the full available width
+        of its container (standard/stacked: full label width; columns: full left column).
+      - This avoids artificially constraining the description to the width of the specs grid,
+        which caused unnecessarily narrow wrapping and aggressive downscaling.
+      - We keep using the same CSS hook (--desc-w) so other layout logic remains unchanged.
+    */
+    desc.style.setProperty("--desc-w", "100%");
   }
 
   function descFitsInMaxLines(descEl, maxLines = 3) {
@@ -695,25 +698,16 @@
     let scaleW = availW / sw;
     let scaleH = availH / sh;
 
-    // Columns layout safeguard: prevent small cell overflows from pushing content out of the label.
-    // We only apply a mild correction (>= 0.60) and only when the cell is actually visible (clientWidth > 0).
-    // Very long unbreakable strings are handled via CSS clipping/ellipsis instead of extreme downscaling.
+    // Extra: corrigeer voor overflow die alleen in grid-cellen zichtbaar is
     let scaleVal = 1;
-    if (innerEl.classList.contains("layout-columns")) {
-      const vals = content.querySelectorAll(".specs-grid .val");
-      for (const v of vals) {
-        const vCw = v.clientWidth;
-        const vSw = v.scrollWidth;
-        if (vCw > 0 && vSw > vCw + 1) {
-          const ratio = vCw / vSw;
-          if (ratio >= 0.6) scaleVal = Math.min(scaleVal, ratio);
-        }
+    content.querySelectorAll(".specs-grid .val").forEach((v) => {
+      const vSw = v.scrollWidth;
+      const vCw = v.clientWidth;
+      if (vSw > vCw + 0.5) {
+        scaleVal = Math.min(scaleVal, vCw / vSw);
       }
-    }
+    });
 
-    // Let op: we schalen alleen op basis van de totale bounding-box van de label-content.
-    // Individuele cel-overflow (zoals een lange EAN/BATCH) wordt afgevangen door CSS (wrappen/clippen)
-    // en mag niet leiden tot extreem kleine --k waarden.
     const k = Math.max(MIN_SCALE_K, Math.min(1, scaleW, scaleH, scaleVal));
     content.style.setProperty("--k", String(k));
     return k;
