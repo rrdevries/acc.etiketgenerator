@@ -415,8 +415,13 @@ select {
   font-size: var(--fs-desc);
   line-height: 1.15;
   min-height: calc(2 * 1.15em); /* altijd ruimte voor 2 regels */
-  overflow-wrap: anywhere;
-  word-break: break-word;
+  /*
+    Wrapping-beleid voor productomschrijving:
+    - 'anywhere' kan woorden middenin breken en (bij smalle kolommen) tekst 'verticaal' laten lijken.
+    - 'break-word' is milder: breekt pas als het nodig is om overflow te voorkomen.
+  */
+  overflow-wrap: break-word;
+  word-break: normal;
   white-space: pre-line;
 }
 
@@ -541,6 +546,12 @@ select {
   grid-area: specs;
   width: 100%;
   justify-items: start;
+  /*
+    In columns-layout willen we nooit dat een lange waarde de rechter kolom
+    buiten het etiket duwt. Clipping gebeurt in de cellen (val), maar we
+    houden ook de grid zelf binnen de beschikbare breedte.
+  */
+  overflow: hidden;
 }
 
 .label-inner.layout-columns .footer-text {
@@ -562,6 +573,9 @@ select {
   white-space: nowrap;
   overflow-wrap: normal;
   word-break: normal;
+  /* Clip + ellipsis i.p.v. extreme schaal-down */
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .softwrap-mode .specs-grid .val {

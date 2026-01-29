@@ -695,17 +695,10 @@
     let scaleW = availW / sw;
     let scaleH = availH / sh;
 
-    // Extra: corrigeer voor overflow die alleen in grid-cellen zichtbaar is
-    let scaleVal = 1;
-    content.querySelectorAll(".specs-grid .val").forEach((v) => {
-      const vSw = v.scrollWidth;
-      const vCw = v.clientWidth;
-      if (vSw > vCw + 0.5) {
-        scaleVal = Math.min(scaleVal, vCw / vSw);
-      }
-    });
-
-    const k = Math.max(MIN_SCALE_K, Math.min(1, scaleW, scaleH, scaleVal));
+    // Let op: we schalen alleen op basis van de totale bounding-box van de label-content.
+    // Individuele cel-overflow (zoals een lange EAN/BATCH) wordt afgevangen door CSS (wrappen/clippen)
+    // en mag niet leiden tot extreem kleine --k waarden.
+    const k = Math.max(MIN_SCALE_K, Math.min(1, scaleW, scaleH));
     content.style.setProperty("--k", String(k));
     return k;
   }
