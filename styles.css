@@ -511,7 +511,7 @@ select {
 /* Columns: product description left, specs column on the right. */
 .label-inner.layout-columns .label-content {
   display: grid;
-  grid-template-columns: 1.15fr 0.85fr;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
   grid-template-rows: auto 1fr auto;
   grid-template-areas:
     "erp specs"
@@ -548,6 +548,14 @@ select {
   justify-self: start;
   text-align: left;
   margin: 0;
+}
+
+/* Prevent grid children from forcing the columns wider than the label */
+.label-inner.layout-columns .product-desc,
+.label-inner.layout-columns .specs-grid,
+.label-inner.layout-columns .erp-box,
+.label-inner.layout-columns .footer-text {
+  min-width: 0;
 }
 
 .nowrap-mode .specs-grid .val {
