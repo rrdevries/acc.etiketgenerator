@@ -445,6 +445,22 @@
     };
   }
 
+  /**
+   * Normalize description text for rendering.
+   * Goal: allow the description to use maximum available width (wrap naturally),
+   * even when the input contains hard line breaks (paste/CSV/newlines).
+   *
+   * We intentionally collapse all whitespace and replace line breaks with single spaces.
+   * This prevents "early" breaks that leave unused horizontal space.
+   */
+  function normalizeDescText(input) {
+    const s = String(input || "");
+    // Normalize CRLF/CR to LF, then treat all line breaks as spaces.
+    const withoutBreaks = s.replace(/\r\n?/g, "\n").replace(/\n+/g, " ");
+    // Collapse runs of whitespace to a single space.
+    return withoutBreaks.replace(/\s+/g, " ").trim();
+  }
+
   function syncDescWidthToSpecs(innerEl) {
     // Deprecated: description now stretches to the maximum available width.
     // Kept as a no-op to avoid regressions if older code paths still call it.
@@ -917,7 +933,7 @@
     const descEl = el(
       "div",
       { class: "line label-desc product-desc" },
-      values.desc,
+      normalizeDescText(values.desc),
     );
 
     const specs = buildSpecsGrid(values);

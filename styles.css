@@ -419,7 +419,8 @@ select {
   min-height: calc(2 * 1.15em); /* altijd ruimte voor 2 regels */
   overflow-wrap: anywhere;
   word-break: break-word;
-  white-space: pre-line;
+  /* Do not preserve hard line breaks from input; wrap naturally to use full width. */
+  white-space: normal;
 }
 
 /* Structural wrappers (needed for bucket layouts) */
