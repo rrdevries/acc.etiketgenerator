@@ -185,6 +185,16 @@
     const H_cm = Number(innerEl.dataset.hcm);
     const anchor = getBucketAnchorFor(W_cm, H_cm);
 
+    // Preview rendering may build the label at a reduced pixel size (previewScale < 1).
+    // Bucket typography is derived from *real* cm dimensions. Without compensating,
+    // content becomes too large for the preview box and the fallback scaler (--k)
+    // kicks in, effectively scaling twice (previewScale × --k) and making the preview tiny.
+    // For PDFs/self-test we render with previewScale=1, so output remains unchanged.
+    const previewScale = Math.max(
+      0.01,
+      Number(innerEl.dataset.previewScale || "1") || 1,
+    );
+
     // Fallback: geen bucket -> zet niets (oude auto-fit kan dan nog werken)
     if (!anchor) return null;
 
@@ -194,11 +204,11 @@
 
     const pick = (name) => Number(anchor.anchors?.[name]?.pt) || 0;
 
-    const erpPx = ptToPx(pick("erp_text") * k);
-    const descPx = ptToPx(pick("product_description") * k);
-    const labelPx = ptToPx(pick("content_label") * k);
-    const textPx = ptToPx(pick("content_text") * k);
-    const footerPx = ptToPx(pick("footer") * k);
+    const erpPx = ptToPx(pick("erp_text") * k) * previewScale;
+    const descPx = ptToPx(pick("product_description") * k) * previewScale;
+    const labelPx = ptToPx(pick("content_label") * k) * previewScale;
+    const textPx = ptToPx(pick("content_text") * k) * previewScale;
+    const footerPx = ptToPx(pick("footer") * k) * previewScale;
 
     innerEl.style.setProperty("--fs-erp", `${erpPx}px`);
     innerEl.style.setProperty("--fs-desc", `${descPx}px`);
@@ -892,6 +902,8 @@
     const inner = el("div", { class: "label-inner nowrap-mode" });
     inner.dataset.wcm = String(size.w);
     inner.dataset.hcm = String(size.h);
+    // Used to keep bucket typography proportional in preview when we render at a reduced pixel size.
+    inner.dataset.previewScale = String(previewScale || 1);
 
     const padPx = LABEL_PADDING_CM * PX_PER_CM * previewScale;
     label.style.padding = padPx + "px";
