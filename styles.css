@@ -388,6 +388,8 @@ select {
   align-items: center;
   justify-content: center;
   text-align: center;
+
+  width: 100%;
   gap: 0.9em;
 
   /* Fallback-scale vanuit JS (altijd alles tonen) */
@@ -404,7 +406,7 @@ select {
 .label-desc {
   display: block;
   margin: 0 auto;
-  width: var(--desc-w, auto); /* wordt door JS gezet op specs-grid breedte */
+  width: 100%; /* productomschrijving gebruikt maximale labelbreedte */
   max-width: 100%;
   font-size: var(--fs-desc);
   line-height: 1.15;
@@ -540,7 +542,8 @@ select {
 
 .label-inner.layout-columns .product-desc {
   grid-area: desc;
-  justify-self: start;
+  justify-self: stretch;
+  width: 100%;
   text-align: left;
   margin: 0;
 }

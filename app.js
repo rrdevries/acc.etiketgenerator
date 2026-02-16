@@ -435,24 +435,6 @@
     };
   }
 
-  function syncDescWidthToSpecs(innerEl) {
-    const desc = innerEl.querySelector(".label-desc");
-    if (!desc) return;
-
-    // In columns-layout the description should use the natural left-column width.
-    if (innerEl.classList.contains("layout-columns")) {
-      desc.style.setProperty("--desc-w", "auto");
-      return;
-    }
-
-    const grid = innerEl.querySelector(".specs-grid");
-    if (!grid) return;
-
-    // offsetWidth is layout-breedte (niet beïnvloed door transform scale)
-    const w = grid.offsetWidth || grid.getBoundingClientRect().width;
-    desc.style.setProperty("--desc-w", w + "px");
-  }
-
   function descFitsInMaxLines(descEl, maxLines = 3) {
     const cs = getComputedStyle(descEl);
     const lh = parseFloat(cs.lineHeight);
@@ -467,10 +449,7 @@
   function shrinkDescToMaxLines(innerEl, maxLines = 3) {
     const desc = innerEl.querySelector(".label-desc");
     if (!desc) return;
-
-    // Eerst breedte syncen, anders klopt wrap niet (zeker bij Standard/Stacked)
-    syncDescWidthToSpecs(innerEl);
-
+    // Breedte is losgekoppeld: omschrijving gebruikt maximale beschikbare breedte.
     // Reset naar CSS var (anchor-typografie)
     desc.style.fontSize = "";
 
@@ -833,7 +812,6 @@
     }
 
     // 3) ensure description stays within maxLines (wrap width matters per layout)
-    syncDescWidthToSpecs(innerEl);
     shrinkDescToMaxLines(innerEl, 3);
 
     // 4) final safety net: scale down whole content if needed (intrinsic + visual check)
