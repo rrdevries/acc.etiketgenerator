@@ -435,6 +435,12 @@
     };
   }
 
+  function syncDescWidthToSpecs(innerEl) {
+    // Deprecated: description now stretches to the maximum available width.
+    // Kept as a no-op to avoid regressions if older code paths still call it.
+    return;
+  }
+
   function descFitsInMaxLines(descEl, maxLines = 3) {
     const cs = getComputedStyle(descEl);
     const lh = parseFloat(cs.lineHeight);
@@ -449,8 +455,10 @@
   function shrinkDescToMaxLines(innerEl, maxLines = 3) {
     const desc = innerEl.querySelector(".label-desc");
     if (!desc) return;
-    // Breedte is losgekoppeld: omschrijving gebruikt maximale beschikbare breedte.
-    // Reset naar CSS var (anchor-typografie)
+
+    // Eerst breedte syncen, anders klopt wrap niet (zeker bij Standard/Stacked)
+
+    // Reset naar bucket-anchor (basis-typografie)
     desc.style.fontSize = "";
 
     if (descFitsInMaxLines(desc, maxLines)) return;
