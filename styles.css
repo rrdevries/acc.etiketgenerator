@@ -390,11 +390,9 @@ select {
   text-align: center;
   gap: 0.9em;
 
-  /* Prevent shrink-to-min-content in flex centering; allow full label width when needed. */
   width: 100%;
-  max-width: 100%;
+  box-sizing: border-box;
   min-width: 0;
-
   /* Fallback-scale vanuit JS (altijd alles tonen) */
   transform: scale(var(--k, 1));
   transform-origin: center;
@@ -409,7 +407,7 @@ select {
 .label-desc {
   display: block;
   margin: 0 auto;
-  width: var(--desc-w, auto); /* wordt door JS gezet op specs-grid breedte */
+  width: 100%; /* always use full available width */
   max-width: 100%;
   font-size: var(--fs-desc);
   line-height: 1.15;
@@ -450,20 +448,14 @@ select {
 
 .specs-grid {
   display: grid;
-  grid-template-columns: max-content minmax(0, 1fr);
-
-  /* Keep the value column as wide as possible for long numeric fields (EAN),
-     and allow us to tighten the key/value spacing without changing font sizes. */
-  row-gap: 0.35em;
-  column-gap: var(--specs-col-gap, 0.9em);
-
+  grid-template-columns: minmax(0, var(--specs-key-w, 7ch)) minmax(0, 1fr);
+  gap: 0.35em var(--specs-col-gap, 0.9em);
   align-items: baseline;
   text-align: left;
 
-  /* In flex column layouts this grid is shrink-to-content; cap it to label width
-     so any overflow becomes measurable and can be resolved (no clipping). */
+  width: 100%;
   max-width: 100%;
-  width: var(--specs-grid-w, auto);
+  box-sizing: border-box;
 }
 
 .specs-grid .key {
@@ -474,6 +466,10 @@ select {
 
 .specs-grid .val {
   font-size: var(--fs-text);
+  min-width: 0;
+
+  /* prevent accidental paint overflow from clipping last glyph */
+  padding-right: 0.05em;
 }
 
 /* ===== Bucket-dependent layouts ===== */
@@ -583,20 +579,6 @@ select {
   white-space: normal;
   overflow-wrap: anywhere;
   word-break: break-word;
-}
-
-/* EAN must remain single-line: do not allow wrapping even in softwrap-mode.
-   We keep the same font size as other values; if it ever gets tight, JS tightens
-   the column-gap instead of shrinking the EAN text. */
-.specs-grid .val.ean-val {
-  /* Force parity with other values. */
-  font-size: var(--fs-text) !important;
-  transform: none !important;
-
-  /* Single-line numeric field. */
-  white-space: nowrap;
-  overflow-wrap: normal;
-  word-break: normal;
 }
 
 /* ===== Single-PDF split layout ===== */

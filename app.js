@@ -436,19 +436,9 @@
   }
 
   function syncDescWidthToSpecs(innerEl) {
-    const desc = innerEl.querySelector(".label-desc");
-    if (!desc) return;
-
-    // In columns-layout the description should use the natural left-column width.
-    if (innerEl.classList.contains("layout-columns")) {
-      desc.style.setProperty("--desc-w", "auto");
-      return;
-    }
-
-    // Standard + Stacked: allow ERP/description to use the full label width.
-    // Binding description width to the (shrink-to-fit) specs grid can collapse wrapping
-    // to a very narrow column in some landscape cases, which then forces extreme downscaling.
-    desc.style.setProperty("--desc-w", "100%");
+    // Desc width is handled purely via CSS (full width in Standard/Stacked, left column in Columns).
+    // Keeping this function as a no-op prevents older logic from forcing an overly narrow width.
+    return;
   }
 
   function descFitsInMaxLines(descEl, maxLines = 3) {
@@ -492,6 +482,72 @@
         hi = mid;
       } else {
         lo = mid;
+      }
+
+      // Reduce key/value column gap (and optionally key column width) to keep long values (EAN) on one line.
+      // This preserves font size consistency (EAN stays the same size as other values) and avoids triggering global fallback scaling.
+      // Canvas text measurement for near-miss overflows (subpixel rounding can clip the last glyph in PDFs).
+      let _measureCanvas = null;
+      function measureTextWidthPx(text, font) {
+        if (!_measureCanvas) _measureCanvas = document.createElement("canvas");
+        const ctx = _measureCanvas.getContext("2d");
+        if (!ctx) return 0;
+        ctx.font = font;
+        return ctx.measureText(text || "").width || 0;
+      }
+
+      function elementTextOverflows(el, safetyPx = 1) {
+        if (!el) return false;
+        const cs = getComputedStyle(el);
+        const font =
+          cs.font || `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+        const w = measureTextWidthPx(el.textContent || "", font);
+        return w > el.clientWidth - safetyPx;
+      }
+
+      function tightenSpecsGridToFit(innerEl) {
+        const grid = innerEl.querySelector(".specs-grid");
+        if (!grid) return;
+
+        // Only relevant for the default (Standard) 2-column grid.
+        if (innerEl.classList.contains("layout-stacked")) return;
+        if (innerEl.classList.contains("layout-columns")) return;
+
+        const vals = Array.from(grid.querySelectorAll(".val"));
+        if (!vals.length) return;
+        const eanVal = vals[0];
+
+        // Reset (CSS defaults).
+        innerEl.style.removeProperty("--specs-col-gap");
+        innerEl.style.removeProperty("--specs-key-w");
+
+        // Stepwise tighten: first shrink the inter-column gap, then (if needed) the key column width.
+        const steps = [
+          { keyW: "7ch", gap: "0.9em" },
+          { keyW: "7ch", gap: "0.7em" },
+          { keyW: "7ch", gap: "0.55em" },
+          { keyW: "6.5ch", gap: "0.45em" },
+          { keyW: "6ch", gap: "0.35em" },
+          { keyW: "6ch", gap: "0.28em" },
+          { keyW: "5.5ch", gap: "0.24em" },
+          { keyW: "5ch", gap: "0.20em" },
+        ];
+
+        for (const s of steps) {
+          innerEl.style.setProperty("--specs-col-gap", s.gap);
+          innerEl.style.setProperty("--specs-key-w", s.keyW);
+
+          // Force reflow so measurements reflect new vars.
+          void grid.offsetWidth;
+
+          if (
+            !elementOverflows(eanVal) &&
+            !elementTextOverflows(eanVal, 1) &&
+            !elementOverflows(grid)
+          ) {
+            return;
+          }
+        }
       }
     }
 
@@ -686,29 +742,6 @@
    - detect overflow on key child elements, and
    - verify the *visual* bounding box after scaling.
 */
-  function textRangeOverflowsRight(el, containerEl, guardX = 0, tolPx = 0.75) {
-    // Detect visual (paint) overflow of a single-line text node.
-    // This catches cases where scrollWidth/clientWidth does not reflect glyph overflow (common in grid/flex shrink-to-fit).
-    if (!el || !containerEl) return false;
-    if (!el.firstChild) return false;
-
-    const ir = containerEl.getBoundingClientRect();
-    const rightLimit = ir.right - guardX - tolPx;
-
-    try {
-      const r = document.createRange();
-      r.selectNodeContents(el);
-      const rects = r.getClientRects();
-      if (!rects || rects.length === 0) return false;
-
-      // If wrapping ever happens, we don't treat this as a "right overflow" here.
-      const last = rects[rects.length - 1];
-      return last.right > rightLimit;
-    } catch (_) {
-      return false;
-    }
-  }
-
   function elementOverflows(el, tol = 0.5) {
     if (!el) return false;
     return (
@@ -828,77 +861,6 @@
     return k;
   }
 
-  function _resetEanInlineTweaks(innerEl) {
-    const ean = innerEl.querySelector(".specs-grid .val.ean-val");
-    if (!ean) return;
-
-    // If any previous iteration applied per-field sizing to EAN, remove it.
-    ean.style.removeProperty("font-size");
-    ean.style.removeProperty("transform");
-    ean.style.removeProperty("letter-spacing");
-  }
-
-  function _tightenSpecsGapIfNeeded(innerEl, guardX) {
-    // Goal: keep EAN at the same font size as other values, and instead reduce the
-    // key/value spacing (and, if needed, expand the grid width basis) when we are a few pixels short.
-    if (innerEl.classList.contains("layout-stacked")) return;
-
-    const content = innerEl.querySelector(".label-content") || innerEl;
-    const grid = content.querySelector(".specs-grid");
-    const ean = content.querySelector(".specs-grid .val.ean-val");
-    if (!grid || !ean) return;
-
-    // Reset to defaults; we only tighten/expand when there is horizontal pressure.
-    innerEl.style.removeProperty("--specs-col-gap");
-    innerEl.style.removeProperty("--specs-grid-w");
-
-    const availW = innerEl.clientWidth - 2 * guardX;
-
-    const eanPaintOver = textRangeOverflowsRight(ean, innerEl, guardX, 0.9);
-    const needsHelp =
-      content.scrollWidth > availW + 0.5 ||
-      elementOverflows(grid) ||
-      elementOverflows(ean) ||
-      eanPaintOver;
-
-    if (!needsHelp) return;
-
-    // Critical: in "standard" (centered) layouts, the specs grid is a flex item and is shrink-to-fit.
-    // That can prevent the 1fr value column from ever using the unused label width.
-    // Giving the grid an explicit width basis unlocks the 1fr track so long values (EAN) can fit.
-    if (!innerEl.classList.contains("layout-columns")) {
-      innerEl.style.setProperty(
-        "--specs-grid-w",
-        `${Math.max(0, Math.floor(availW))}px`,
-      );
-    }
-
-    // Step-wise tightening (keeps visuals stable; avoids unnecessary changes).
-    const gaps = [
-      "0.65em",
-      "0.50em",
-      "0.40em",
-      "0.30em",
-      "0.25em",
-      "0.20em",
-      "0.15em",
-      "0.10em",
-      "0.05em",
-      "0em",
-    ];
-    for (const g of gaps) {
-      innerEl.style.setProperty("--specs-col-gap", g);
-
-      const okNow =
-        content.scrollWidth <= availW + 0.5 &&
-        !elementOverflows(grid) &&
-        !elementOverflows(ean) &&
-        !textRangeOverflowsRight(ean, innerEl, guardX, 0.9);
-
-      if (okNow) return;
-    }
-  }
-
   function applyBucketThenFit(innerEl) {
     const w = innerEl.clientWidth;
     const h = innerEl.clientHeight;
@@ -923,18 +885,12 @@
       innerEl.classList.remove("nowrap-mode");
       innerEl.classList.add("softwrap-mode");
     }
-
-    // 3) ensure description stays within maxLines (wrap width matters per layout)
-    syncDescWidthToSpecs(innerEl);
+    // 3) ensure description stays within maxLines
+    // (width is handled by CSS; we only shrink font-size when it would exceed 3 lines)
     shrinkDescToMaxLines(innerEl, 3);
 
-    // 3b) EAN should stay same size as other values; tighten grid gap if we are a few pixels short.
-    _resetEanInlineTweaks(innerEl);
-    _tightenSpecsGapIfNeeded(innerEl, guardX);
-
-    // If we tightened the specs gap, description width may change slightly; re-apply the 3-line guard.
-    syncDescWidthToSpecs(innerEl);
-    shrinkDescToMaxLines(innerEl, 3);
+    // 3b) keep EAN (14 digits max) on one line by tightening key/value spacing before scaling the whole label
+    tightenSpecsGridToFit(innerEl);
 
     // 4) final safety net: scale down whole content if needed (intrinsic + visual check)
     ensureContentFits(innerEl, guardX, guardY);
@@ -970,7 +926,7 @@
 
     grid.append(
       el("div", { class: "key" }, "EAN:"),
-      el("div", { class: "val ean-val" }, values.ean || ""),
+      el("div", { class: "val" }, values.ean || ""),
       el("div", { class: "key" }, "QTY:"),
       el("div", { class: "val" }, `${values.qty || ""} PCS`),
       el("div", { class: "key" }, "G.W:"),
@@ -1394,8 +1350,9 @@
     { name: "L50_W50_H50", len: 50, wid: 50, hei: 50 },
     { name: "L25_W25_H10", len: 25, wid: 25, hei: 10 },
 
-    // Customer regression: tight EAN at standard font sizes
+    // Reported tight-fit regression cases (EAN on Standard layout, portrait-wide)
     { name: "L39_W28_H59", len: 39, wid: 28, hei: 59 },
+    { name: "L39_W29_H59", len: 39, wid: 29, hei: 59 },
 
     // Decimals / rounding surfaces
     { name: "L63_5_W47_2_H12_3", len: 63.5, wid: 47.2, hei: 12.3 },
@@ -1417,9 +1374,17 @@
       const guardX = Math.max(2, w * 0.015);
       const guardY = Math.max(2, h * 0.015);
 
+      const eanVal = inner.querySelector(".specs-grid .val");
+      const eanOk =
+        !inner.classList.contains("layout-stacked") &&
+        !inner.classList.contains("layout-columns")
+          ? !elementTextOverflows(eanVal, 1)
+          : true;
+
       // After renderPreviewFor, fitAllIn() already ran. We validate that nothing is clipped.
       const ok =
         visualFits(inner, guardX, guardY) &&
+        eanOk &&
         ![
           ...inner.querySelectorAll(
             ".specs-grid .val, .code-box, .label-desc, .footer-text",
