@@ -390,6 +390,11 @@ select {
   text-align: center;
   gap: 0.9em;
 
+  /* Prevent shrink-to-min-content in flex centering; allow full label width when needed. */
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+
   /* Fallback-scale vanuit JS (altijd alles tonen) */
   transform: scale(var(--k, 1));
   transform-origin: center;

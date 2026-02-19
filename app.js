@@ -445,12 +445,10 @@
       return;
     }
 
-    const grid = innerEl.querySelector(".specs-grid");
-    if (!grid) return;
-
-    // offsetWidth is layout-breedte (niet beïnvloed door transform scale)
-    const w = grid.offsetWidth || grid.getBoundingClientRect().width;
-    desc.style.setProperty("--desc-w", w + "px");
+    // Standard + Stacked: allow ERP/description to use the full label width.
+    // Binding description width to the (shrink-to-fit) specs grid can collapse wrapping
+    // to a very narrow column in some landscape cases, which then forces extreme downscaling.
+    desc.style.setProperty("--desc-w", "100%");
   }
 
   function descFitsInMaxLines(descEl, maxLines = 3) {
@@ -735,8 +733,8 @@
     if (grid && elementOverflows(grid)) return false;
 
     return (
-      content.scrollWidth <= innerEl.clientWidth - guardX &&
-      content.scrollHeight <= innerEl.clientHeight - guardY
+      content.scrollWidth <= innerEl.clientWidth - 2 * guardX &&
+      content.scrollHeight <= innerEl.clientHeight - 2 * guardY
     );
   }
 
@@ -761,8 +759,8 @@
   function applyScaleFallback(innerEl, guardX, guardY) {
     const content = innerEl.querySelector(".label-content") || innerEl;
 
-    const availW = Math.max(1, innerEl.clientWidth - guardX);
-    const availH = Math.max(1, innerEl.clientHeight - guardY);
+    const availW = Math.max(1, innerEl.clientWidth - 2 * guardX);
+    const availH = Math.max(1, innerEl.clientHeight - 2 * guardY);
 
     const sw = Math.max(1, content.scrollWidth);
     const sh = Math.max(1, content.scrollHeight);
@@ -816,8 +814,8 @@
       const ir = innerEl.getBoundingClientRect();
       const cr = content.getBoundingClientRect();
 
-      const availW = Math.max(1, ir.width - guardX);
-      const availH = Math.max(1, ir.height - guardY);
+      const availW = Math.max(1, ir.width - 2 * guardX);
+      const availH = Math.max(1, ir.height - 2 * guardY);
 
       const extraW = availW / Math.max(1, cr.width);
       const extraH = availH / Math.max(1, cr.height);
@@ -854,7 +852,7 @@
     innerEl.style.removeProperty("--specs-col-gap");
     innerEl.style.removeProperty("--specs-grid-w");
 
-    const availW = innerEl.clientWidth - guardX;
+    const availW = innerEl.clientWidth - 2 * guardX;
 
     const eanPaintOver = textRangeOverflowsRight(ean, innerEl, guardX, 0.9);
     const needsHelp =
