@@ -500,59 +500,6 @@
     desc.style.fontSize = best + "px";
   }
 
-  // Ensure the EAN value (max 14 digits) always stays on a single line *within* the specs value column.
-  // We prefer shrinking only the EAN font-size instead of scaling down the entire label content.
-  function fitEanSingleLine(innerEl) {
-    const eanEl = innerEl.querySelector(".ean-val");
-    if (!eanEl) return;
-
-    // Reset any previous per-EAN fitting.
-    eanEl.style.fontSize = "";
-    eanEl.style.transform = "";
-    eanEl.style.transformOrigin = "";
-    eanEl.style.display = "";
-
-    // If layout isn't ready yet, bail.
-    const cw0 = eanEl.clientWidth;
-    if (!cw0 || cw0 <= 0) return;
-
-    const fits = () => eanEl.scrollWidth <= eanEl.clientWidth + 0.5;
-    if (fits()) return;
-
-    const basePx = parseFloat(getComputedStyle(eanEl).fontSize) || 10;
-    // Boundaries: keep it readable; in practice we rarely need to go this low.
-    const minPx = Math.max(7, basePx * 0.65);
-
-    let lo = minPx;
-    let hi = basePx;
-    let best = minPx;
-
-    // Binary search the largest font-size that fits.
-    for (let i = 0; i < 18; i++) {
-      const mid = (lo + hi) / 2;
-      eanEl.style.fontSize = mid + "px";
-      if (fits()) {
-        best = mid;
-        lo = mid;
-      } else {
-        hi = mid;
-      }
-    }
-
-    eanEl.style.fontSize = best + "px";
-    if (fits()) return;
-
-    // Last resort: very light horizontal squeeze to avoid clipping (keeps single line).
-    const sw = eanEl.scrollWidth;
-    const cw = eanEl.clientWidth;
-    if (sw > 0 && cw > 0) {
-      const sx = Math.max(0.75, (cw / sw) * 0.99);
-      eanEl.style.display = "inline-block";
-      eanEl.style.transformOrigin = "left center";
-      eanEl.style.transform = `scaleX(${sx})`;
-    }
-  }
-
   /* ====== LABEL GEOMETRY ======
    Calculates the four label faces based on box dimensions.
    Business rule: 0.9 scaling factor in both directions.
@@ -889,8 +836,8 @@
     syncDescWidthToSpecs(innerEl);
     shrinkDescToMaxLines(innerEl, 3);
 
-    // 3b) ensure EAN never clips/wraps (max 14 digits must stay single-line within the label)
-    fitEanSingleLine(innerEl);
+    // 3b) Robust EAN: always one line inside its cell, before global fit runs.
+    fitEanToOneLine(innerEl);
 
     // 4) final safety net: scale down whole content if needed (intrinsic + visual check)
     ensureContentFits(innerEl, guardX, guardY);
@@ -924,10 +871,16 @@
   function buildSpecsGrid(values) {
     const grid = el("div", { class: "specs-grid" });
 
+    // Mark the EAN value so we can apply a dedicated “always one line” fit.
+    const eanVal = el(
+      "div",
+      { class: "val ean-val", "data-field": "ean" },
+      values.ean || "",
+    );
+
     grid.append(
       el("div", { class: "key" }, "EAN:"),
-      // EAN is numeric (max 14 digits) and must stay single-line; we target it explicitly for width fitting.
-      el("div", { class: "val ean-val" }, values.ean || ""),
+      eanVal,
       el("div", { class: "key" }, "QTY:"),
       el("div", { class: "val" }, `${values.qty || ""} PCS`),
       el("div", { class: "key" }, "G.W:"),
@@ -939,6 +892,54 @@
     );
 
     return grid;
+  }
+
+  /**
+   * Ensures the EAN value (max 14 digits) stays on ONE line and fits inside its value cell.
+   *
+   * We do this BEFORE the global content-fit runs, so a minor EAN overflow can’t trigger
+   * a full-label fallback-scale (which makes the whole layout look "broken").
+   */
+  function fitEanToOneLine(innerEl) {
+    const eanEl = innerEl.querySelector(".ean-val");
+    if (!eanEl) return;
+
+    // Reset any previous inline overrides
+    eanEl.style.fontSize = "";
+
+    const fits = () => {
+      const cw = eanEl.clientWidth;
+      const sw = eanEl.scrollWidth;
+      return sw <= cw + 0.6; // tolerantie voor subpixels
+    };
+
+    if (fits()) return;
+
+    const basePx = parseFloat(getComputedStyle(eanEl).fontSize) || 10;
+    const minPx = Math.max(4.5, basePx * 0.55);
+
+    let lo = minPx;
+    let hi = Math.max(minPx, basePx);
+    let best = lo;
+
+    // Binary search to find the smallest font-size that fits.
+    for (let i = 0; i < 18; i++) {
+      const mid = (lo + hi) / 2;
+      eanEl.style.fontSize = mid + "px";
+      if (fits()) {
+        best = mid;
+        hi = mid;
+      } else {
+        lo = mid;
+      }
+    }
+
+    eanEl.style.fontSize = best + "px";
+
+    // Final nudge for rounding edge-cases
+    if (!fits() && best > minPx) {
+      eanEl.style.fontSize = Math.max(minPx, best - 0.4) + "px";
+    }
   }
 
   function footerTextForLabel(size, largestTwo) {
@@ -1325,7 +1326,7 @@
   // Curated edge-case set:
   // - Small H (5–15cm) with large L/W
   // - Small L/W with large H
-  // - Boundaries (5 and 120)
+  // - Boundaries (5 and 100)
   // - A few decimal dimensions to exercise rounding
   const PDF_GEOMETRY_EDGE_CASES = [
     // Small H, large L/W
@@ -1351,16 +1352,17 @@
     { name: "L50_W50_H50", len: 50, wid: 50, hei: 50 },
     { name: "L25_W25_H10", len: 25, wid: 25, hei: 10 },
 
-    // Real-world repro: 14-digit EAN just barely clipped (reported by customer)
-    { name: "L39_W28_H59", len: 39, wid: 28, hei: 59 },
-
     // Decimals / rounding surfaces
     { name: "L63_5_W47_2_H12_3", len: 63.5, wid: 47.2, hei: 12.3 },
     { name: "L99_9_W5_1_H14_9", len: 99.9, wid: 5.1, hei: 14.9 },
+
+    // Real-world reported tight case (EAN 14 digits)
+    { name: "L39_W28_H59", len: 39, wid: 28, hei: 59 },
   ];
   // Stress strings for layout overflow regression (long tokens + hyphens + unicode dash).
   const PDF_LAYOUT_STRESS_DESC =
     "8719327417447 - BarDeluxe - 5-piece - Boston - Black / Slow Juicer – Cherry Red";
+  // 14 digits to match the EAN maximum requirement.
   const PDF_LAYOUT_STRESS_EAN = "12345678901234";
 
   function _pdfLayoutCheck(container) {
@@ -1375,13 +1377,8 @@
       const guardY = Math.max(2, h * 0.015);
 
       // After renderPreviewFor, fitAllIn() already ran. We validate that nothing is clipped.
-      const eanVal = inner.querySelector(".ean-val");
-      const eanMultiLine =
-        eanVal && eanVal.getClientRects && eanVal.getClientRects().length > 1;
-
       const ok =
         visualFits(inner, guardX, guardY) &&
-        !eanMultiLine &&
         ![
           ...inner.querySelectorAll(
             ".specs-grid .val, .code-box, .label-desc, .footer-text",
