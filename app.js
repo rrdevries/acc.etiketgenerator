@@ -688,6 +688,29 @@
    - detect overflow on key child elements, and
    - verify the *visual* bounding box after scaling.
 */
+  function textRangeOverflowsRight(el, containerEl, guardX = 0, tolPx = 0.75) {
+    // Detect visual (paint) overflow of a single-line text node.
+    // This catches cases where scrollWidth/clientWidth does not reflect glyph overflow (common in grid/flex shrink-to-fit).
+    if (!el || !containerEl) return false;
+    if (!el.firstChild) return false;
+
+    const ir = containerEl.getBoundingClientRect();
+    const rightLimit = ir.right - guardX - tolPx;
+
+    try {
+      const r = document.createRange();
+      r.selectNodeContents(el);
+      const rects = r.getClientRects();
+      if (!rects || rects.length === 0) return false;
+
+      // If wrapping ever happens, we don't treat this as a "right overflow" here.
+      const last = rects[rects.length - 1];
+      return last.right > rightLimit;
+    } catch (_) {
+      return false;
+    }
+  }
+
   function elementOverflows(el, tol = 0.5) {
     if (!el) return false;
     return (
@@ -819,7 +842,7 @@
 
   function _tightenSpecsGapIfNeeded(innerEl, guardX) {
     // Goal: keep EAN at the same font size as other values, and instead reduce the
-    // key/value spacing when we are a few pixels short.
+    // key/value spacing (and, if needed, expand the grid width basis) when we are a few pixels short.
     if (innerEl.classList.contains("layout-stacked")) return;
 
     const content = innerEl.querySelector(".label-content") || innerEl;
@@ -827,27 +850,52 @@
     const ean = content.querySelector(".specs-grid .val.ean-val");
     if (!grid || !ean) return;
 
-    // Start from the default (CSS fallback). We only tighten when there's horizontal pressure.
+    // Reset to defaults; we only tighten/expand when there is horizontal pressure.
     innerEl.style.removeProperty("--specs-col-gap");
+    innerEl.style.removeProperty("--specs-grid-w");
 
     const availW = innerEl.clientWidth - guardX;
+
+    const eanPaintOver = textRangeOverflowsRight(ean, innerEl, guardX, 0.9);
     const needsHelp =
       content.scrollWidth > availW + 0.5 ||
       elementOverflows(grid) ||
-      elementOverflows(ean);
+      elementOverflows(ean) ||
+      eanPaintOver;
 
     if (!needsHelp) return;
 
+    // Critical: in "standard" (centered) layouts, the specs grid is a flex item and is shrink-to-fit.
+    // That can prevent the 1fr value column from ever using the unused label width.
+    // Giving the grid an explicit width basis unlocks the 1fr track so long values (EAN) can fit.
+    if (!innerEl.classList.contains("layout-columns")) {
+      innerEl.style.setProperty(
+        "--specs-grid-w",
+        `${Math.max(0, Math.floor(availW))}px`,
+      );
+    }
+
     // Step-wise tightening (keeps visuals stable; avoids unnecessary changes).
-    const gaps = ["0.65em", "0.50em", "0.40em", "0.30em"];
+    const gaps = [
+      "0.65em",
+      "0.50em",
+      "0.40em",
+      "0.30em",
+      "0.25em",
+      "0.20em",
+      "0.15em",
+      "0.10em",
+      "0.05em",
+      "0em",
+    ];
     for (const g of gaps) {
       innerEl.style.setProperty("--specs-col-gap", g);
 
-      // Re-check only the horizontal aspects we care about.
       const okNow =
         content.scrollWidth <= availW + 0.5 &&
         !elementOverflows(grid) &&
-        !elementOverflows(ean);
+        !elementOverflows(ean) &&
+        !textRangeOverflowsRight(ean, innerEl, guardX, 0.9);
 
       if (okNow) return;
     }

@@ -458,6 +458,7 @@ select {
   /* In flex column layouts this grid is shrink-to-content; cap it to label width
      so any overflow becomes measurable and can be resolved (no clipping). */
   max-width: 100%;
+  width: var(--specs-grid-w, auto);
 }
 
 .specs-grid .key {
