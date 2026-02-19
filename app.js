@@ -807,6 +807,52 @@
     return k;
   }
 
+  function _resetEanInlineTweaks(innerEl) {
+    const ean = innerEl.querySelector(".specs-grid .val.ean-val");
+    if (!ean) return;
+
+    // If any previous iteration applied per-field sizing to EAN, remove it.
+    ean.style.removeProperty("font-size");
+    ean.style.removeProperty("transform");
+    ean.style.removeProperty("letter-spacing");
+  }
+
+  function _tightenSpecsGapIfNeeded(innerEl, guardX) {
+    // Goal: keep EAN at the same font size as other values, and instead reduce the
+    // key/value spacing when we are a few pixels short.
+    if (innerEl.classList.contains("layout-stacked")) return;
+
+    const content = innerEl.querySelector(".label-content") || innerEl;
+    const grid = content.querySelector(".specs-grid");
+    const ean = content.querySelector(".specs-grid .val.ean-val");
+    if (!grid || !ean) return;
+
+    // Start from the default (CSS fallback). We only tighten when there's horizontal pressure.
+    innerEl.style.removeProperty("--specs-col-gap");
+
+    const availW = innerEl.clientWidth - guardX;
+    const needsHelp =
+      content.scrollWidth > availW + 0.5 ||
+      elementOverflows(grid) ||
+      elementOverflows(ean);
+
+    if (!needsHelp) return;
+
+    // Step-wise tightening (keeps visuals stable; avoids unnecessary changes).
+    const gaps = ["0.65em", "0.50em", "0.40em", "0.30em"];
+    for (const g of gaps) {
+      innerEl.style.setProperty("--specs-col-gap", g);
+
+      // Re-check only the horizontal aspects we care about.
+      const okNow =
+        content.scrollWidth <= availW + 0.5 &&
+        !elementOverflows(grid) &&
+        !elementOverflows(ean);
+
+      if (okNow) return;
+    }
+  }
+
   function applyBucketThenFit(innerEl) {
     const w = innerEl.clientWidth;
     const h = innerEl.clientHeight;
@@ -836,8 +882,13 @@
     syncDescWidthToSpecs(innerEl);
     shrinkDescToMaxLines(innerEl, 3);
 
-    // 3b) Robust EAN: always one line inside its cell, before global fit runs.
-    fitEanToOneLine(innerEl);
+    // 3b) EAN should stay same size as other values; tighten grid gap if we are a few pixels short.
+    _resetEanInlineTweaks(innerEl);
+    _tightenSpecsGapIfNeeded(innerEl, guardX);
+
+    // If we tightened the specs gap, description width may change slightly; re-apply the 3-line guard.
+    syncDescWidthToSpecs(innerEl);
+    shrinkDescToMaxLines(innerEl, 3);
 
     // 4) final safety net: scale down whole content if needed (intrinsic + visual check)
     ensureContentFits(innerEl, guardX, guardY);
@@ -871,16 +922,9 @@
   function buildSpecsGrid(values) {
     const grid = el("div", { class: "specs-grid" });
 
-    // Mark the EAN value so we can apply a dedicated “always one line” fit.
-    const eanVal = el(
-      "div",
-      { class: "val ean-val", "data-field": "ean" },
-      values.ean || "",
-    );
-
     grid.append(
       el("div", { class: "key" }, "EAN:"),
-      eanVal,
+      el("div", { class: "val ean-val" }, values.ean || ""),
       el("div", { class: "key" }, "QTY:"),
       el("div", { class: "val" }, `${values.qty || ""} PCS`),
       el("div", { class: "key" }, "G.W:"),
@@ -892,54 +936,6 @@
     );
 
     return grid;
-  }
-
-  /**
-   * Ensures the EAN value (max 14 digits) stays on ONE line and fits inside its value cell.
-   *
-   * We do this BEFORE the global content-fit runs, so a minor EAN overflow can’t trigger
-   * a full-label fallback-scale (which makes the whole layout look "broken").
-   */
-  function fitEanToOneLine(innerEl) {
-    const eanEl = innerEl.querySelector(".ean-val");
-    if (!eanEl) return;
-
-    // Reset any previous inline overrides
-    eanEl.style.fontSize = "";
-
-    const fits = () => {
-      const cw = eanEl.clientWidth;
-      const sw = eanEl.scrollWidth;
-      return sw <= cw + 0.6; // tolerantie voor subpixels
-    };
-
-    if (fits()) return;
-
-    const basePx = parseFloat(getComputedStyle(eanEl).fontSize) || 10;
-    const minPx = Math.max(4.5, basePx * 0.55);
-
-    let lo = minPx;
-    let hi = Math.max(minPx, basePx);
-    let best = lo;
-
-    // Binary search to find the smallest font-size that fits.
-    for (let i = 0; i < 18; i++) {
-      const mid = (lo + hi) / 2;
-      eanEl.style.fontSize = mid + "px";
-      if (fits()) {
-        best = mid;
-        hi = mid;
-      } else {
-        lo = mid;
-      }
-    }
-
-    eanEl.style.fontSize = best + "px";
-
-    // Final nudge for rounding edge-cases
-    if (!fits() && best > minPx) {
-      eanEl.style.fontSize = Math.max(minPx, best - 0.4) + "px";
-    }
   }
 
   function footerTextForLabel(size, largestTwo) {
@@ -1352,17 +1348,16 @@
     { name: "L50_W50_H50", len: 50, wid: 50, hei: 50 },
     { name: "L25_W25_H10", len: 25, wid: 25, hei: 10 },
 
+    // Customer regression: tight EAN at standard font sizes
+    { name: "L39_W28_H59", len: 39, wid: 28, hei: 59 },
+
     // Decimals / rounding surfaces
     { name: "L63_5_W47_2_H12_3", len: 63.5, wid: 47.2, hei: 12.3 },
     { name: "L99_9_W5_1_H14_9", len: 99.9, wid: 5.1, hei: 14.9 },
-
-    // Real-world reported tight case (EAN 14 digits)
-    { name: "L39_W28_H59", len: 39, wid: 28, hei: 59 },
   ];
   // Stress strings for layout overflow regression (long tokens + hyphens + unicode dash).
   const PDF_LAYOUT_STRESS_DESC =
     "8719327417447 - BarDeluxe - 5-piece - Boston - Black / Slow Juicer – Cherry Red";
-  // 14 digits to match the EAN maximum requirement.
   const PDF_LAYOUT_STRESS_EAN = "12345678901234";
 
   function _pdfLayoutCheck(container) {
