@@ -436,9 +436,18 @@
   }
 
   function syncDescWidthToSpecs(innerEl) {
-    // Desc width is handled purely via CSS (full width in Standard/Stacked, left column in Columns).
-    // Keeping this function as a no-op prevents older logic from forcing an overly narrow width.
-    return;
+    const desc = innerEl.querySelector(".label-desc");
+    if (!desc) return;
+
+    // Columns-layout: description uses the natural left-column width.
+    if (innerEl.classList.contains("layout-columns")) {
+      desc.style.setProperty("--desc-w", "auto");
+      return;
+    }
+
+    // Standard / Stacked: always use full available label width.
+    // Coupling description width to the specs-grid can collapse the layout on landscape/narrow cases.
+    desc.style.setProperty("--desc-w", "100%");
   }
 
   function descFitsInMaxLines(descEl, maxLines = 3) {
@@ -483,75 +492,44 @@
       } else {
         lo = mid;
       }
-
-      // Reduce key/value column gap (and optionally key column width) to keep long values (EAN) on one line.
-      // This preserves font size consistency (EAN stays the same size as other values) and avoids triggering global fallback scaling.
-      // Canvas text measurement for near-miss overflows (subpixel rounding can clip the last glyph in PDFs).
-      let _measureCanvas = null;
-      function measureTextWidthPx(text, font) {
-        if (!_measureCanvas) _measureCanvas = document.createElement("canvas");
-        const ctx = _measureCanvas.getContext("2d");
-        if (!ctx) return 0;
-        ctx.font = font;
-        return ctx.measureText(text || "").width || 0;
-      }
-
-      function elementTextOverflows(el, safetyPx = 1) {
-        if (!el) return false;
-        const cs = getComputedStyle(el);
-        const font =
-          cs.font || `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
-        const w = measureTextWidthPx(el.textContent || "", font);
-        return w > el.clientWidth - safetyPx;
-      }
-
-      function tightenSpecsGridToFit(innerEl) {
-        const grid = innerEl.querySelector(".specs-grid");
-        if (!grid) return;
-
-        // Only relevant for the default (Standard) 2-column grid.
-        if (innerEl.classList.contains("layout-stacked")) return;
-        if (innerEl.classList.contains("layout-columns")) return;
-
-        const vals = Array.from(grid.querySelectorAll(".val"));
-        if (!vals.length) return;
-        const eanVal = vals[0];
-
-        // Reset (CSS defaults).
-        innerEl.style.removeProperty("--specs-col-gap");
-        innerEl.style.removeProperty("--specs-key-w");
-
-        // Stepwise tighten: first shrink the inter-column gap, then (if needed) the key column width.
-        const steps = [
-          { keyW: "7ch", gap: "0.9em" },
-          { keyW: "7ch", gap: "0.7em" },
-          { keyW: "7ch", gap: "0.55em" },
-          { keyW: "6.5ch", gap: "0.45em" },
-          { keyW: "6ch", gap: "0.35em" },
-          { keyW: "6ch", gap: "0.28em" },
-          { keyW: "5.5ch", gap: "0.24em" },
-          { keyW: "5ch", gap: "0.20em" },
-        ];
-
-        for (const s of steps) {
-          innerEl.style.setProperty("--specs-col-gap", s.gap);
-          innerEl.style.setProperty("--specs-key-w", s.keyW);
-
-          // Force reflow so measurements reflect new vars.
-          void grid.offsetWidth;
-
-          if (
-            !elementOverflows(eanVal) &&
-            !elementTextOverflows(eanVal, 1) &&
-            !elementOverflows(grid)
-          ) {
-            return;
-          }
-        }
-      }
     }
 
     desc.style.fontSize = best + "px";
+  }
+
+  // Tighten the key/value column gap in the specs-grid so a 14-digit EAN stays fully visible
+  // without changing the EAN font-size.
+  // This runs before the global fallback scale.
+  function tightenSpecsGridToFit(innerEl) {
+    const grid = innerEl.querySelector(".specs-grid");
+    if (!grid) return;
+
+    // Only relevant for layouts where the specs-grid is shown.
+    const eanEl = grid.querySelector(".ean-val") || grid.querySelector(".val");
+    if (!eanEl) return;
+
+    // Reset to defaults first (CSS fallback values).
+    grid.style.removeProperty("--specs-gap-x");
+
+    // Ensure a definite width basis for the grid so 1fr can distribute.
+    // (In shrink-to-fit contexts, fr tracks can behave like max-content.)
+    grid.style.width = "100%";
+    grid.style.maxWidth = "100%";
+
+    const fits = () => eanEl.scrollWidth <= eanEl.clientWidth + 0.5;
+    if (fits()) return;
+
+    // Stepwise reduce the column gap. Keep it readable; stop once it fits.
+    const steps = [
+      0.9, 0.75, 0.65, 0.55, 0.45, 0.35, 0.3, 0.25, 0.2, 0.15, 0.1,
+    ];
+    for (const em of steps) {
+      grid.style.setProperty("--specs-gap-x", em + "em");
+      if (fits()) return;
+    }
+
+    // If it still does not fit, we do NOT shrink the EAN font here (requested).
+    // The final global fit step may scale the whole label very slightly as a last resort.
   }
 
   /* ====== LABEL GEOMETRY ======
@@ -885,11 +863,12 @@
       innerEl.classList.remove("nowrap-mode");
       innerEl.classList.add("softwrap-mode");
     }
-    // 3) ensure description stays within maxLines
-    // (width is handled by CSS; we only shrink font-size when it would exceed 3 lines)
+
+    // 3) ensure description stays within maxLines (wrap width matters per layout)
+    syncDescWidthToSpecs(innerEl);
     shrinkDescToMaxLines(innerEl, 3);
 
-    // 3b) keep EAN (14 digits max) on one line by tightening key/value spacing before scaling the whole label
+    // 3b) keep EAN one-line by tightening key/value spacing (no font-size change)
     tightenSpecsGridToFit(innerEl);
 
     // 4) final safety net: scale down whole content if needed (intrinsic + visual check)
@@ -926,7 +905,7 @@
 
     grid.append(
       el("div", { class: "key" }, "EAN:"),
-      el("div", { class: "val" }, values.ean || ""),
+      el("div", { class: "val ean-val" }, values.ean || ""),
       el("div", { class: "key" }, "QTY:"),
       el("div", { class: "val" }, `${values.qty || ""} PCS`),
       el("div", { class: "key" }, "G.W:"),
@@ -1350,7 +1329,7 @@
     { name: "L50_W50_H50", len: 50, wid: 50, hei: 50 },
     { name: "L25_W25_H10", len: 25, wid: 25, hei: 10 },
 
-    // Reported tight-fit regression cases (EAN on Standard layout, portrait-wide)
+    // EAN stress + landscape/narrow cases
     { name: "L39_W28_H59", len: 39, wid: 28, hei: 59 },
     { name: "L39_W29_H59", len: 39, wid: 29, hei: 59 },
 
@@ -1374,17 +1353,9 @@
       const guardX = Math.max(2, w * 0.015);
       const guardY = Math.max(2, h * 0.015);
 
-      const eanVal = inner.querySelector(".specs-grid .val");
-      const eanOk =
-        !inner.classList.contains("layout-stacked") &&
-        !inner.classList.contains("layout-columns")
-          ? !elementTextOverflows(eanVal, 1)
-          : true;
-
       // After renderPreviewFor, fitAllIn() already ran. We validate that nothing is clipped.
       const ok =
         visualFits(inner, guardX, guardY) &&
-        eanOk &&
         ![
           ...inner.querySelectorAll(
             ".specs-grid .val, .code-box, .label-desc, .footer-text",
@@ -2333,4 +2304,7 @@
   document.addEventListener("DOMContentLoaded", () => {
     init().catch((e) => alert(e.message || e));
   });
+
+  // Expose for debugging / optional external calls (safe no-op when unused).
+  window.tightenSpecsGridToFit = tightenSpecsGridToFit;
 })();
