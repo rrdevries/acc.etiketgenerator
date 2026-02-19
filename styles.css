@@ -390,6 +390,10 @@ select {
   text-align: center;
   gap: 0.9em;
 
+  /* Prevent child blocks (e.g., specs-grid with long EAN) from expanding beyond the label bounds. */
+  max-width: 100%;
+  max-height: 100%;
+
   /* Fallback-scale vanuit JS (altijd alles tonen) */
   transform: scale(var(--k, 1));
   transform-origin: center;
@@ -449,8 +453,12 @@ select {
   gap: 0.35em 0.9em;
   align-items: baseline;
   text-align: left;
+
+  /* Keep the block as compact as possible, but never wider than the label. */
+  width: fit-content;
   max-width: 100%;
-  min-width: 0;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .specs-grid .key {
@@ -461,17 +469,14 @@ select {
 
 .specs-grid .val {
   font-size: var(--fs-text);
-  min-width: 0;
+  min-width: 0; /* allow the value column to shrink; needed for reliable overflow measurement */
 }
 
-/* EAN must always stay on one line and fit within the label. */
-.specs-grid .ean-val {
-  display: inline-block;
-  max-width: 100%;
+/* EAN must always stay on a single line (even when softwrap-mode is enabled). */
+.specs-grid .val.ean-val {
   white-space: nowrap !important;
   overflow-wrap: normal !important;
   word-break: normal !important;
-  font-variant-numeric: tabular-nums;
 }
 
 /* ===== Bucket-dependent layouts ===== */
