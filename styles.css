@@ -388,11 +388,6 @@ select {
   align-items: center;
   justify-content: center;
   text-align: center;
-
-  /* Ensure children can use full label width (e.g. 3-line product description). */
-  width: 100%;
-  box-sizing: border-box;
-
   gap: 0.9em;
 
   /* Fallback-scale vanuit JS (altijd alles tonen) */
@@ -409,18 +404,14 @@ select {
 .label-desc {
   display: block;
   margin: 0 auto;
-  /* Productomschrijving gebruikt maximale beschikbare labelbreedte. */
-  width: 100%;
-  max-width: 100%;
-  align-self: stretch;
+  width: var(--desc-w, auto); /* wordt door JS gezet op specs-grid breedte */
   max-width: 100%;
   font-size: var(--fs-desc);
   line-height: 1.15;
   min-height: calc(2 * 1.15em); /* altijd ruimte voor 2 regels */
   overflow-wrap: anywhere;
   word-break: break-word;
-  /* Do not preserve hard line breaks from input; wrap naturally to use full width. */
-  white-space: normal;
+  white-space: pre-line;
 }
 
 /* Structural wrappers (needed for bucket layouts) */
@@ -458,6 +449,8 @@ select {
   gap: 0.35em 0.9em;
   align-items: baseline;
   text-align: left;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .specs-grid .key {
@@ -468,6 +461,17 @@ select {
 
 .specs-grid .val {
   font-size: var(--fs-text);
+  min-width: 0;
+}
+
+/* EAN must always stay on one line and fit within the label. */
+.specs-grid .ean-val {
+  display: inline-block;
+  max-width: 100%;
+  white-space: nowrap !important;
+  overflow-wrap: normal !important;
+  word-break: normal !important;
+  font-variant-numeric: tabular-nums;
 }
 
 /* ===== Bucket-dependent layouts ===== */

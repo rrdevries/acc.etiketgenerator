@@ -185,16 +185,6 @@
     const H_cm = Number(innerEl.dataset.hcm);
     const anchor = getBucketAnchorFor(W_cm, H_cm);
 
-    // Preview rendering may build the label at a reduced pixel size (previewScale < 1).
-    // Bucket typography is derived from *real* cm dimensions. Without compensating,
-    // content becomes too large for the preview box and the fallback scaler (--k)
-    // kicks in, effectively scaling twice (previewScale × --k) and making the preview tiny.
-    // For PDFs/self-test we render with previewScale=1, so output remains unchanged.
-    const previewScale = Math.max(
-      0.01,
-      Number(innerEl.dataset.previewScale || "1") || 1,
-    );
-
     // Fallback: geen bucket -> zet niets (oude auto-fit kan dan nog werken)
     if (!anchor) return null;
 
@@ -204,11 +194,11 @@
 
     const pick = (name) => Number(anchor.anchors?.[name]?.pt) || 0;
 
-    const erpPx = ptToPx(pick("erp_text") * k) * previewScale;
-    const descPx = ptToPx(pick("product_description") * k) * previewScale;
-    const labelPx = ptToPx(pick("content_label") * k) * previewScale;
-    const textPx = ptToPx(pick("content_text") * k) * previewScale;
-    const footerPx = ptToPx(pick("footer") * k) * previewScale;
+    const erpPx = ptToPx(pick("erp_text") * k);
+    const descPx = ptToPx(pick("product_description") * k);
+    const labelPx = ptToPx(pick("content_label") * k);
+    const textPx = ptToPx(pick("content_text") * k);
+    const footerPx = ptToPx(pick("footer") * k);
 
     innerEl.style.setProperty("--fs-erp", `${erpPx}px`);
     innerEl.style.setProperty("--fs-desc", `${descPx}px`);
@@ -445,26 +435,22 @@
     };
   }
 
-  /**
-   * Normalize description text for rendering.
-   * Goal: allow the description to use maximum available width (wrap naturally),
-   * even when the input contains hard line breaks (paste/CSV/newlines).
-   *
-   * We intentionally collapse all whitespace and replace line breaks with single spaces.
-   * This prevents "early" breaks that leave unused horizontal space.
-   */
-  function normalizeDescText(input) {
-    const s = String(input || "");
-    // Normalize CRLF/CR to LF, then treat all line breaks as spaces.
-    const withoutBreaks = s.replace(/\r\n?/g, "\n").replace(/\n+/g, " ");
-    // Collapse runs of whitespace to a single space.
-    return withoutBreaks.replace(/\s+/g, " ").trim();
-  }
-
   function syncDescWidthToSpecs(innerEl) {
-    // Deprecated: description now stretches to the maximum available width.
-    // Kept as a no-op to avoid regressions if older code paths still call it.
-    return;
+    const desc = innerEl.querySelector(".label-desc");
+    if (!desc) return;
+
+    // In columns-layout the description should use the natural left-column width.
+    if (innerEl.classList.contains("layout-columns")) {
+      desc.style.setProperty("--desc-w", "auto");
+      return;
+    }
+
+    const grid = innerEl.querySelector(".specs-grid");
+    if (!grid) return;
+
+    // offsetWidth is layout-breedte (niet beïnvloed door transform scale)
+    const w = grid.offsetWidth || grid.getBoundingClientRect().width;
+    desc.style.setProperty("--desc-w", w + "px");
   }
 
   function descFitsInMaxLines(descEl, maxLines = 3) {
@@ -483,8 +469,9 @@
     if (!desc) return;
 
     // Eerst breedte syncen, anders klopt wrap niet (zeker bij Standard/Stacked)
+    syncDescWidthToSpecs(innerEl);
 
-    // Reset naar bucket-anchor (basis-typografie)
+    // Reset naar CSS var (anchor-typografie)
     desc.style.fontSize = "";
 
     if (descFitsInMaxLines(desc, maxLines)) return;
@@ -513,6 +500,67 @@
     desc.style.fontSize = best + "px";
   }
 
+  function fitEanToOneLine(innerEl) {
+    const eanEl = innerEl.querySelector(".specs-grid .ean-val");
+    if (!eanEl) return;
+
+    // Always keep EAN on a single line (even in softwrap-mode).
+    eanEl.style.whiteSpace = "nowrap";
+    eanEl.style.overflowWrap = "normal";
+    eanEl.style.wordBreak = "normal";
+
+    // Reset per-run overrides
+    eanEl.style.transform = "";
+    eanEl.style.transformOrigin = "";
+    eanEl.style.fontSize = "";
+
+    // Available width is meaningful only if the grid is constrained to the label width (see CSS).
+    const availW = eanEl.clientWidth || eanEl.getBoundingClientRect().width;
+    if (!availW || availW <= 0) return;
+
+    const fitsNow = () => eanEl.scrollWidth <= availW + 0.5;
+    if (fitsNow()) return;
+
+    const basePx = parseFloat(getComputedStyle(eanEl).fontSize) || 10;
+    const minPx = Math.max(6, basePx * 0.55);
+
+    // Binary search for the largest font size that still fits
+    let lo = minPx;
+    let hi = basePx;
+    let best = minPx;
+
+    for (let i = 0; i < 18; i++) {
+      const mid = (lo + hi) / 2;
+      eanEl.style.fontSize = mid + "px";
+      if (fitsNow()) {
+        best = mid;
+        lo = mid;
+      } else {
+        hi = mid;
+      }
+    }
+
+    eanEl.style.fontSize = best + "px";
+
+    // If it still doesn't fit (extreme narrow layouts), apply mild horizontal squeeze as last resort.
+    if (!fitsNow()) {
+      const sx = availW / Math.max(1, eanEl.scrollWidth);
+      const kx = Math.max(0.85, Math.min(1, sx * 0.995));
+      eanEl.style.transform = `scaleX(${kx})`;
+      eanEl.style.transformOrigin = "left center";
+    }
+  }
+
+  function elementIsSingleLine(el) {
+    if (!el) return true;
+    const cs = getComputedStyle(el);
+    const lh = parseFloat(cs.lineHeight);
+    const lineH =
+      Number.isFinite(lh) && lh > 0
+        ? lh
+        : (parseFloat(cs.fontSize) || 10) * 1.15;
+    return el.getBoundingClientRect().height <= lineH * 1.35;
+  }
   /* ====== LABEL GEOMETRY ======
    Calculates the four label faces based on box dimensions.
    Business rule: 0.9 scaling factor in both directions.
@@ -846,7 +894,11 @@
     }
 
     // 3) ensure description stays within maxLines (wrap width matters per layout)
+    syncDescWidthToSpecs(innerEl);
     shrinkDescToMaxLines(innerEl, 3);
+
+    // Keep EAN (max 14 digits) on a single line and within the label width.
+    fitEanToOneLine(innerEl);
 
     // 4) final safety net: scale down whole content if needed (intrinsic + visual check)
     ensureContentFits(innerEl, guardX, guardY);
@@ -882,7 +934,7 @@
 
     grid.append(
       el("div", { class: "key" }, "EAN:"),
-      el("div", { class: "val" }, values.ean || ""),
+      el("div", { class: "val ean-val" }, values.ean || ""),
       el("div", { class: "key" }, "QTY:"),
       el("div", { class: "val" }, `${values.qty || ""} PCS`),
       el("div", { class: "key" }, "G.W:"),
@@ -918,8 +970,6 @@
     const inner = el("div", { class: "label-inner nowrap-mode" });
     inner.dataset.wcm = String(size.w);
     inner.dataset.hcm = String(size.h);
-    // Used to keep bucket typography proportional in preview when we render at a reduced pixel size.
-    inner.dataset.previewScale = String(previewScale || 1);
 
     const padPx = LABEL_PADDING_CM * PX_PER_CM * previewScale;
     label.style.padding = padPx + "px";
@@ -933,7 +983,7 @@
     const descEl = el(
       "div",
       { class: "line label-desc product-desc" },
-      normalizeDescText(values.desc),
+      values.desc,
     );
 
     const specs = buildSpecsGrid(values);
@@ -1315,7 +1365,7 @@
   // Stress strings for layout overflow regression (long tokens + hyphens + unicode dash).
   const PDF_LAYOUT_STRESS_DESC =
     "8719327417447 - BarDeluxe - 5-piece - Boston - Black / Slow Juicer – Cherry Red";
-  const PDF_LAYOUT_STRESS_EAN = "8719327417447";
+  const PDF_LAYOUT_STRESS_EAN = "87193274174477"; // 14 digits stress
 
   function _pdfLayoutCheck(container) {
     const issues = [];
