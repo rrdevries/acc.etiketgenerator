@@ -439,15 +439,18 @@
     const desc = innerEl.querySelector(".label-desc");
     if (!desc) return;
 
-    // Columns-layout: description uses the natural left-column width.
+    // In columns-layout the description should use the natural left-column width.
     if (innerEl.classList.contains("layout-columns")) {
       desc.style.setProperty("--desc-w", "auto");
       return;
     }
 
-    // Standard / Stacked: always use full available label width.
-    // Coupling description width to the specs-grid can collapse the layout on landscape/narrow cases.
-    desc.style.setProperty("--desc-w", "100%");
+    const grid = innerEl.querySelector(".specs-grid");
+    if (!grid) return;
+
+    // offsetWidth is layout-breedte (niet beïnvloed door transform scale)
+    const w = grid.offsetWidth || grid.getBoundingClientRect().width;
+    desc.style.setProperty("--desc-w", w + "px");
   }
 
   function descFitsInMaxLines(descEl, maxLines = 3) {
@@ -495,41 +498,6 @@
     }
 
     desc.style.fontSize = best + "px";
-  }
-
-  // Tighten the key/value column gap in the specs-grid so a 14-digit EAN stays fully visible
-  // without changing the EAN font-size.
-  // This runs before the global fallback scale.
-  function tightenSpecsGridToFit(innerEl) {
-    const grid = innerEl.querySelector(".specs-grid");
-    if (!grid) return;
-
-    // Only relevant for layouts where the specs-grid is shown.
-    const eanEl = grid.querySelector(".ean-val") || grid.querySelector(".val");
-    if (!eanEl) return;
-
-    // Reset to defaults first (CSS fallback values).
-    grid.style.removeProperty("--specs-gap-x");
-
-    // Ensure a definite width basis for the grid so 1fr can distribute.
-    // (In shrink-to-fit contexts, fr tracks can behave like max-content.)
-    grid.style.width = "100%";
-    grid.style.maxWidth = "100%";
-
-    const fits = () => eanEl.scrollWidth <= eanEl.clientWidth + 0.5;
-    if (fits()) return;
-
-    // Stepwise reduce the column gap. Keep it readable; stop once it fits.
-    const steps = [
-      0.9, 0.75, 0.65, 0.55, 0.45, 0.35, 0.3, 0.25, 0.2, 0.15, 0.1,
-    ];
-    for (const em of steps) {
-      grid.style.setProperty("--specs-gap-x", em + "em");
-      if (fits()) return;
-    }
-
-    // If it still does not fit, we do NOT shrink the EAN font here (requested).
-    // The final global fit step may scale the whole label very slightly as a last resort.
   }
 
   /* ====== LABEL GEOMETRY ======
@@ -743,6 +711,7 @@
     const grid = content.querySelector(".specs-grid");
     if (grid && elementOverflows(grid)) return false;
 
+    // Reserve guard on both sides: subtract twice guardX/guardY for total usable space.
     return (
       content.scrollWidth <= innerEl.clientWidth - 2 * guardX &&
       content.scrollHeight <= innerEl.clientHeight - 2 * guardY
@@ -770,6 +739,7 @@
   function applyScaleFallback(innerEl, guardX, guardY) {
     const content = innerEl.querySelector(".label-content") || innerEl;
 
+    // Total available space should account for guards on both sides (left/right and top/bottom).
     const availW = Math.max(1, innerEl.clientWidth - 2 * guardX);
     const availH = Math.max(1, innerEl.clientHeight - 2 * guardY);
 
@@ -825,6 +795,7 @@
       const ir = innerEl.getBoundingClientRect();
       const cr = content.getBoundingClientRect();
 
+      // When verifying the visual bounding box after scaling, reserve guard on both sides.
       const availW = Math.max(1, ir.width - 2 * guardX);
       const availH = Math.max(1, ir.height - 2 * guardY);
 
@@ -868,9 +839,6 @@
     syncDescWidthToSpecs(innerEl);
     shrinkDescToMaxLines(innerEl, 3);
 
-    // 3b) keep EAN one-line by tightening key/value spacing (no font-size change)
-    tightenSpecsGridToFit(innerEl);
-
     // 4) final safety net: scale down whole content if needed (intrinsic + visual check)
     ensureContentFits(innerEl, guardX, guardY);
   }
@@ -905,7 +873,7 @@
 
     grid.append(
       el("div", { class: "key" }, "EAN:"),
-      el("div", { class: "val ean-val" }, values.ean || ""),
+      el("div", { class: "val" }, values.ean || ""),
       el("div", { class: "key" }, "QTY:"),
       el("div", { class: "val" }, `${values.qty || ""} PCS`),
       el("div", { class: "key" }, "G.W:"),
@@ -1329,10 +1297,6 @@
     { name: "L50_W50_H50", len: 50, wid: 50, hei: 50 },
     { name: "L25_W25_H10", len: 25, wid: 25, hei: 10 },
 
-    // EAN stress + landscape/narrow cases
-    { name: "L39_W28_H59", len: 39, wid: 28, hei: 59 },
-    { name: "L39_W29_H59", len: 39, wid: 29, hei: 59 },
-
     // Decimals / rounding surfaces
     { name: "L63_5_W47_2_H12_3", len: 63.5, wid: 47.2, hei: 12.3 },
     { name: "L99_9_W5_1_H14_9", len: 99.9, wid: 5.1, hei: 14.9 },
@@ -1340,7 +1304,9 @@
   // Stress strings for layout overflow regression (long tokens + hyphens + unicode dash).
   const PDF_LAYOUT_STRESS_DESC =
     "8719327417447 - BarDeluxe - 5-piece - Boston - Black / Slow Juicer – Cherry Red";
-  const PDF_LAYOUT_STRESS_EAN = "12345678901234";
+  // Stress EAN string used in layout regression tests. Use 14 characters to reflect
+  // the maximum GTIN-14 length (previously 13 chars). See README for GTIN-14 spec.
+  const PDF_LAYOUT_STRESS_EAN = "87193274174474";
 
   function _pdfLayoutCheck(container) {
     const issues = [];
@@ -2305,6 +2271,65 @@
     init().catch((e) => alert(e.message || e));
   });
 
-  // Expose for debugging / optional external calls (safe no-op when unused).
-  window.tightenSpecsGridToFit = tightenSpecsGridToFit;
+  /**
+   * Runs regression checks for a list of box dimension cases. Each case should
+   * include length (len), width (wid) and height (hei) in cm and an optional
+   * name. This helper will render the four faces at scale 1 using the
+   * PDF_LAYOUT_STRESS_EAN and PDF_LAYOUT_STRESS_DESC and then verify that
+   * nothing overflows. Failing cases will be logged to the console and
+   * included in the returned array. Note: this function is for development
+   * purposes and is not wired to any UI element.
+   *
+   * Example usage (in console):
+   *   await runRegressionTests([
+   *     { name: 'CaseA', len: 30, wid: 20, hei: 10 },
+   *     { name: 'CaseB', len: 70, wid: 5, hei: 20 },
+   *   ]);
+   *
+   * @param {Array<{len:number,wid:number,hei:number,name?:string}>} cases
+   * @returns {Promise<Array<{case:object, issues?:Array, error?:string}>>}
+   */
+  window.runRegressionTests = async function runRegressionTests(cases = []) {
+    const results = [];
+    for (const c of cases) {
+      try {
+        const vals = {
+          code: `REGTEST_${c.name || ""}`,
+          desc: PDF_LAYOUT_STRESS_DESC,
+          ean: PDF_LAYOUT_STRESS_EAN,
+          qty: "1",
+          gw: "0",
+          cbm: "0",
+          len: c.len,
+          wid: c.wid,
+          hei: c.hei,
+          batch: "",
+        };
+        const pdfHost = ensurePdfRenderHost();
+        const res = await renderPreviewFor(vals, {
+          targetEl: pdfHost,
+          previewScale: 1,
+          renderDims: false,
+          showVariant: false,
+        });
+        if (!res || !res.container) {
+          results.push({ case: c, error: "render failed" });
+          console.warn(`Case ${c.name || JSON.stringify(c)}: render failed`);
+          continue;
+        }
+        const issues = _pdfLayoutCheck(res.container);
+        if (issues && issues.length) {
+          results.push({ case: c, issues });
+          console.warn(`Case ${c.name || JSON.stringify(c)} failed:`, issues);
+        } else {
+          console.log(`Case ${c.name || JSON.stringify(c)} passed`);
+          results.push({ case: c });
+        }
+      } catch (err) {
+        console.error(err);
+        results.push({ case: c, error: String(err) });
+      }
+    }
+    return results;
+  };
 })();

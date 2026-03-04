@@ -390,11 +390,6 @@ select {
   text-align: center;
   gap: 0.9em;
 
-  /* Provide a definite width basis to prevent shrink-to-fit collapse */
-  width: 100%;
-  max-width: 100%;
-  min-width: 0;
-
   /* Fallback-scale vanuit JS (altijd alles tonen) */
   transform: scale(var(--k, 1));
   transform-origin: center;
@@ -409,10 +404,7 @@ select {
 .label-desc {
   display: block;
   margin: 0 auto;
-  width: var(
-    --desc-w,
-    100%
-  ); /* standaard volle breedte; JS zet auto in columns-layout */
+  width: var(--desc-w, auto); /* wordt door JS gezet op specs-grid breedte */
   max-width: 100%;
   font-size: var(--fs-desc);
   line-height: 1.15;
@@ -453,13 +445,10 @@ select {
 
 .specs-grid {
   display: grid;
-  grid-template-columns: var(--specs-key-w, max-content) minmax(0, 1fr);
-  row-gap: 0.35em;
-  column-gap: var(--specs-gap-x, 0.9em);
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0.35em 0.9em;
   align-items: baseline;
   text-align: left;
-  width: 100%;
-  max-width: 100%;
 }
 
 .specs-grid .key {
@@ -1080,9 +1069,4 @@ details.selftest > summary {
 
 .selftest-log .err {
   color: #b00;
-}
-
-/* Keep EAN always single-line; fitting is done by tightening grid spacing */
-.specs-grid .val.ean-val {
-  white-space: nowrap;
 }
