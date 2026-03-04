@@ -696,6 +696,77 @@
     );
   }
 
+  /**
+   * Clears inline font tweaks that may have been applied during a previous fit pass.
+   * We only ever tweak per-block typography for overflow safety; bucket typography
+   * (CSS vars) remains the primary source of truth.
+   */
+  function resetOverflowFontTweaks(innerEl) {
+    const content = innerEl?.querySelector(".label-content") || innerEl;
+    if (!content) return;
+    const targets = content.querySelectorAll(
+      ".specs-grid .val, .code-box, .footer-text",
+    );
+    targets.forEach((el) => {
+      el.style.removeProperty("font-size");
+      el.style.removeProperty("letter-spacing");
+      el.style.removeProperty("white-space");
+      el.style.removeProperty("overflow-wrap");
+      el.style.removeProperty("word-break");
+    });
+  }
+
+  /**
+   * Shrinks the font-size of an element until its own scroll metrics fit within
+   * its client box. This is crucial for cases where a single value cell (e.g. EAN)
+   * can overflow while the parent box itself still "fits".
+   */
+  function shrinkElementFontToFit(el, opts = {}) {
+    if (!el) return;
+    const minPx = Number.isFinite(opts.minPx) ? opts.minPx : 6;
+    const maxIter = Number.isFinite(opts.maxIter) ? opts.maxIter : 4;
+
+    for (let i = 0; i < maxIter; i++) {
+      if (!elementOverflows(el)) return;
+      const cs = window.getComputedStyle(el);
+      const fs = parseFloat(cs.fontSize) || 0;
+      if (fs <= minPx + 0.01) break;
+
+      const rW = el.clientWidth / Math.max(1, el.scrollWidth);
+      const rH = el.clientHeight / Math.max(1, el.scrollHeight);
+      let r = Math.min(rW, rH);
+      if (!Number.isFinite(r) || r >= 1) break;
+
+      // Apply a small safety margin to avoid borderline rounding issues.
+      r = Math.max(0.01, Math.min(0.995, r));
+      const next = Math.max(minPx, fs * r);
+      el.style.fontSize = `${next}px`;
+    }
+
+    // Last resort: if it still overflows at the minimum font size, allow breaking.
+    // This is scoped to the single element (no global CSS changes).
+    if (elementOverflows(el)) {
+      el.style.whiteSpace = "normal";
+      el.style.overflowWrap = "anywhere";
+      el.style.wordBreak = "break-all";
+    }
+  }
+
+  /**
+   * Applies per-block typography tweaks to prevent clipping. This keeps the overall
+   * layout (bucket-driven) intact while ensuring long tokens (like GTIN-14) remain visible.
+   */
+  function shrinkOverflowingBlocks(innerEl) {
+    const content = innerEl?.querySelector(".label-content") || innerEl;
+    if (!content) return;
+    const vals = content.querySelectorAll(".specs-grid .val");
+    vals.forEach((v) => shrinkElementFontToFit(v, { minPx: 6, maxIter: 5 }));
+
+    // ERP can also be long in some datasets; keep the tweak minimal.
+    const codeBox = content.querySelector(".code-box");
+    if (codeBox) shrinkElementFontToFit(codeBox, { minPx: 8, maxIter: 4 });
+  }
+
   function intrinsicFits(innerEl, guardX, guardY) {
     const content = innerEl.querySelector(".label-content") || innerEl;
 
@@ -778,83 +849,35 @@
   function ensureContentFits(innerEl, guardX, guardY) {
     const content = innerEl.querySelector(".label-content") || innerEl;
 
-    // Reset any previous fallback-scale before measuring
+    // Reset fallback-scale before measuring
     if (content) content.style.setProperty("--k", "1");
 
-    // Early exit: if content already fits intrinsically and visually, no scaling needed
-    if (
-      intrinsicFits(innerEl, guardX, guardY) &&
-      visualFits(innerEl, guardX, guardY)
-    ) {
+    // 1) Intrinsic fit (no transform scaling needed)
+    if (intrinsicFits(innerEl, guardX, guardY)) {
       if (content) content.style.setProperty("--k", "1");
       return 1;
     }
 
-    // We'll iteratively reduce the scale factor until both the intrinsic metrics and
-    // visual bounds fit within the available space. This guards against edge cases
-    // where a single scaling pass may not fully eliminate overflow (e.g. long EANs
-    // on narrow labels). We cap the number of iterations to avoid infinite loops.
-    let k = 1;
-    for (let attempt = 0; attempt < 3; attempt++) {
-      // Compute available space (subtracting guard on both sides) relative to the unscaled scroll size
-      const availW = Math.max(1, innerEl.clientWidth - 2 * guardX);
-      const availH = Math.max(1, innerEl.clientHeight - 2 * guardY);
-      const sw = Math.max(1, content.scrollWidth);
-      const sh = Math.max(1, content.scrollHeight);
-      let scaleW = availW / sw;
-      let scaleH = availH / sh;
+    // 2) Apply fallback scaling (based on intrinsic scroll metrics)
+    let k = applyScaleFallback(innerEl, guardX, guardY);
 
-      // Compute overflow ratio for individual candidates (cells) — similar to applyScaleFallback
-      let scaleChild = 1;
-      const candidates = [
-        ...content.querySelectorAll(".specs-grid .val"),
-        ...content.querySelectorAll(".code-box"),
-        ...content.querySelectorAll(".label-desc"),
-        ...content.querySelectorAll(".footer-text"),
-      ];
-      candidates.forEach((el) => {
-        const elSw = el.scrollWidth;
-        const elCw = el.clientWidth;
-        if (elSw > 0 && elSw > elCw + 0.5) {
-          scaleChild = Math.min(scaleChild, elCw / elSw);
-        }
-        const elSh = el.scrollHeight;
-        const elCh = el.clientHeight;
-        if (elSh > 0 && elSh > elCh + 0.5) {
-          scaleChild = Math.min(scaleChild, elCh / elSh);
-        }
-      });
-
-      // Compute visual bounding ratios on the already scaled content
+    // 3) Verify visual bounding box (after transforms). If still clipped, apply an extra safety factor.
+    if (!visualFits(innerEl, guardX, guardY)) {
       const ir = innerEl.getBoundingClientRect();
       const cr = content.getBoundingClientRect();
-      const availWB = Math.max(1, ir.width - 2 * guardX);
-      const availHB = Math.max(1, ir.height - 2 * guardY);
-      const extraW = availWB / Math.max(1, cr.width);
-      const extraH = availHB / Math.max(1, cr.height);
+
+      // When verifying the visual bounding box after scaling, reserve guard on both sides.
+      const availW = Math.max(1, ir.width - 2 * guardX);
+      const availH = Math.max(1, ir.height - 2 * guardY);
+
+      const extraW = availW / Math.max(1, cr.width);
+      const extraH = availH / Math.max(1, cr.height);
       const extra = Math.min(1, extraW, extraH);
 
-      // Determine the next scaling factor: pick the most constraining ratio and apply a
-      // small safety margin (0.5%) to avoid borderline rounding issues.
-      let delta = Math.min(scaleW, scaleH, scaleChild, extra);
-      delta = Math.min(1, delta);
-      delta = delta * 0.995;
-      if (delta <= 0) {
-        // Defensive guard: avoid invalid scaling values
-        k = MIN_SCALE_K;
-      } else {
-        k = Math.max(MIN_SCALE_K, Math.min(1, k * delta));
-      }
+      k = Math.max(MIN_SCALE_K, Math.min(1, k * extra * 0.995));
       content.style.setProperty("--k", String(k));
-
-      // After applying the scale, verify whether overflow and clipping are resolved
-      if (
-        intrinsicFits(innerEl, guardX, guardY) &&
-        visualFits(innerEl, guardX, guardY)
-      ) {
-        break;
-      }
     }
+
     return k;
   }
 
@@ -886,6 +909,10 @@
     // 3) ensure description stays within maxLines (wrap width matters per layout)
     syncDescWidthToSpecs(innerEl);
     shrinkDescToMaxLines(innerEl, 3);
+
+    // 3b) prevent clipping of long tokens inside individual blocks (e.g. GTIN-14 in EAN)
+    resetOverflowFontTweaks(innerEl);
+    shrinkOverflowingBlocks(innerEl);
 
     // 4) final safety net: scale down whole content if needed (intrinsic + visual check)
     ensureContentFits(innerEl, guardX, guardY);
@@ -1344,6 +1371,9 @@
     // Square-ish / stable baselines
     { name: "L50_W50_H50", len: 50, wid: 50, hei: 50 },
     { name: "L25_W25_H10", len: 25, wid: 25, hei: 10 },
+
+    // Reported customer case: previously clipped GTIN-14 in some faces
+    { name: "L42_W32_H62", len: 42, wid: 32, hei: 62 },
 
     // Decimals / rounding surfaces
     { name: "L63_5_W47_2_H12_3", len: 63.5, wid: 47.2, hei: 12.3 },
