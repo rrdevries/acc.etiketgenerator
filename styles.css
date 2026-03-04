@@ -449,16 +449,20 @@ select {
   gap: 0.35em 0.9em;
   align-items: baseline;
   text-align: left;
+  /* Scale factor for spec values; defaults to 1. Adjusted via JS when needed */
+  --spec-k: 1;
 }
 
 .specs-grid .key {
   font-weight: 900;
-  font-size: var(--fs-label);
+  /* Multiply label font by spec scale factor to shrink uniformly when needed */
+  font-size: calc(var(--fs-label) * var(--spec-k));
   white-space: nowrap;
 }
 
 .specs-grid .val {
-  font-size: var(--fs-text);
+  /* Multiply text font by spec scale factor */
+  font-size: calc(var(--fs-text) * var(--spec-k));
 }
 
 /* ===== Bucket-dependent layouts ===== */
