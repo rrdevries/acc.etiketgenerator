@@ -926,7 +926,37 @@
     // 3) ensure description stays within maxLines (wrap width matters per layout)
     syncDescWidthToSpecs(innerEl);
     shrinkDescToMaxLines(innerEl, 3);
-    // 3b) Uniformly shrink the specs table if any value overflows. This keeps
+
+    // 3b) dynamic layout fallback: If any specification value overflows horizontally in
+    // the two-column (standard/columns) layout, switch to stacked layout so that
+    // keys and values are laid out vertically. This provides full width for
+    // long EAN/QTY/GW/BATCH strings and prevents over-aggressive downscaling.
+    {
+      const currentLayout = innerEl.dataset.layout || "";
+      // Only attempt fallback when not already stacked
+      if (currentLayout !== "stacked") {
+        const content = innerEl.querySelector(".label-content") || innerEl;
+        const vals = content.querySelectorAll(".specs-grid .val");
+        let anyOverflow = false;
+        vals.forEach((el) => {
+          if (el.scrollWidth > el.clientWidth + 0.5) {
+            anyOverflow = true;
+          }
+        });
+        if (anyOverflow) {
+          // Switch to stacked layout: keys/values stacked vertically
+          innerEl.classList.add("layout-stacked");
+          innerEl.classList.remove("layout-columns");
+          innerEl.dataset.layout = "stacked";
+          // After layout switch, update description width and line count because
+          // available width changes.
+          syncDescWidthToSpecs(innerEl);
+          shrinkDescToMaxLines(innerEl, 3);
+        }
+      }
+    }
+
+    // 3c) Uniformly shrink the specs table if any value overflows. This keeps
     // all specs at the same font-size ratio while avoiding clipping. If nothing
     // overflows, this will apply a factor of 1.
     shrinkSpecsUniformToFit(innerEl);
