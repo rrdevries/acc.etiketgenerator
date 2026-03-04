@@ -918,11 +918,10 @@
     syncDescWidthToSpecs(innerEl);
     shrinkDescToMaxLines(innerEl, 3);
 
-    // 3b) prevent clipping of long tokens inside individual blocks (e.g. GTIN-14 in EAN)
-    resetOverflowFontTweaks(innerEl);
-    shrinkOverflowingBlocks(innerEl);
-
     // 4) final safety net: scale down whole content if needed (intrinsic + visual check)
+    // NOTE: We intentionally avoid shrinking the EAN (or other values) independently.
+    // If something doesn't fit, we scale the entire label-content via --k so all values
+    // keep the same relative font sizes.
     ensureContentFits(innerEl, guardX, guardY);
   }
 
