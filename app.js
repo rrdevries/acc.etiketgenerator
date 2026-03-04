@@ -778,35 +778,83 @@
   function ensureContentFits(innerEl, guardX, guardY) {
     const content = innerEl.querySelector(".label-content") || innerEl;
 
-    // Reset fallback-scale bij nieuwe metingen
+    // Reset any previous fallback-scale before measuring
     if (content) content.style.setProperty("--k", "1");
 
-    // 1) Intrinsic fit (no transform scaling needed)
-    if (intrinsicFits(innerEl, guardX, guardY)) {
+    // Early exit: if content already fits intrinsically and visually, no scaling needed
+    if (
+      intrinsicFits(innerEl, guardX, guardY) &&
+      visualFits(innerEl, guardX, guardY)
+    ) {
       if (content) content.style.setProperty("--k", "1");
       return 1;
     }
 
-    // 2) Apply fallback scaling (based on intrinsic scroll metrics)
-    let k = applyScaleFallback(innerEl, guardX, guardY);
+    // We'll iteratively reduce the scale factor until both the intrinsic metrics and
+    // visual bounds fit within the available space. This guards against edge cases
+    // where a single scaling pass may not fully eliminate overflow (e.g. long EANs
+    // on narrow labels). We cap the number of iterations to avoid infinite loops.
+    let k = 1;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      // Compute available space (subtracting guard on both sides) relative to the unscaled scroll size
+      const availW = Math.max(1, innerEl.clientWidth - 2 * guardX);
+      const availH = Math.max(1, innerEl.clientHeight - 2 * guardY);
+      const sw = Math.max(1, content.scrollWidth);
+      const sh = Math.max(1, content.scrollHeight);
+      let scaleW = availW / sw;
+      let scaleH = availH / sh;
 
-    // 3) Verify visual bounding box (after transforms). If still clipped, apply an extra safety factor.
-    if (!visualFits(innerEl, guardX, guardY)) {
+      // Compute overflow ratio for individual candidates (cells) — similar to applyScaleFallback
+      let scaleChild = 1;
+      const candidates = [
+        ...content.querySelectorAll(".specs-grid .val"),
+        ...content.querySelectorAll(".code-box"),
+        ...content.querySelectorAll(".label-desc"),
+        ...content.querySelectorAll(".footer-text"),
+      ];
+      candidates.forEach((el) => {
+        const elSw = el.scrollWidth;
+        const elCw = el.clientWidth;
+        if (elSw > 0 && elSw > elCw + 0.5) {
+          scaleChild = Math.min(scaleChild, elCw / elSw);
+        }
+        const elSh = el.scrollHeight;
+        const elCh = el.clientHeight;
+        if (elSh > 0 && elSh > elCh + 0.5) {
+          scaleChild = Math.min(scaleChild, elCh / elSh);
+        }
+      });
+
+      // Compute visual bounding ratios on the already scaled content
       const ir = innerEl.getBoundingClientRect();
       const cr = content.getBoundingClientRect();
-
-      // When verifying the visual bounding box after scaling, reserve guard on both sides.
-      const availW = Math.max(1, ir.width - 2 * guardX);
-      const availH = Math.max(1, ir.height - 2 * guardY);
-
-      const extraW = availW / Math.max(1, cr.width);
-      const extraH = availH / Math.max(1, cr.height);
+      const availWB = Math.max(1, ir.width - 2 * guardX);
+      const availHB = Math.max(1, ir.height - 2 * guardY);
+      const extraW = availWB / Math.max(1, cr.width);
+      const extraH = availHB / Math.max(1, cr.height);
       const extra = Math.min(1, extraW, extraH);
 
-      k = Math.max(MIN_SCALE_K, Math.min(1, k * extra * 0.995));
+      // Determine the next scaling factor: pick the most constraining ratio and apply a
+      // small safety margin (0.5%) to avoid borderline rounding issues.
+      let delta = Math.min(scaleW, scaleH, scaleChild, extra);
+      delta = Math.min(1, delta);
+      delta = delta * 0.995;
+      if (delta <= 0) {
+        // Defensive guard: avoid invalid scaling values
+        k = MIN_SCALE_K;
+      } else {
+        k = Math.max(MIN_SCALE_K, Math.min(1, k * delta));
+      }
       content.style.setProperty("--k", String(k));
-    }
 
+      // After applying the scale, verify whether overflow and clipping are resolved
+      if (
+        intrinsicFits(innerEl, guardX, guardY) &&
+        visualFits(innerEl, guardX, guardY)
+      ) {
+        break;
+      }
+    }
     return k;
   }
 
