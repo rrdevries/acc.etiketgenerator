@@ -194,17 +194,25 @@
 
     const pick = (name) => Number(anchor.anchors?.[name]?.pt) || 0;
 
+    // Bucket typography is defined in *print* pixels (based on pt->px) and the physical
+    // label size in cm. In the on-screen preview we may render the label scaled down
+    // (previewScale < 1) to fit the viewport. To keep the preview visually identical to
+    // the PDF output (just scaled), we apply the previewScale to the CSS font vars.
+    // Important: we still return the unscaled sizes for logic decisions (e.g. wrap threshold),
+    // so preview scaling does not change layout-mode decisions.
+    const previewScale = Number(innerEl.dataset.previewScale) || 1;
+
     const erpPx = ptToPx(pick("erp_text") * k);
     const descPx = ptToPx(pick("product_description") * k);
     const labelPx = ptToPx(pick("content_label") * k);
     const textPx = ptToPx(pick("content_text") * k);
     const footerPx = ptToPx(pick("footer") * k);
 
-    innerEl.style.setProperty("--fs-erp", `${erpPx}px`);
-    innerEl.style.setProperty("--fs-desc", `${descPx}px`);
-    innerEl.style.setProperty("--fs-label", `${labelPx}px`);
-    innerEl.style.setProperty("--fs-text", `${textPx}px`);
-    innerEl.style.setProperty("--fs-footer", `${footerPx}px`);
+    innerEl.style.setProperty("--fs-erp", `${erpPx * previewScale}px`);
+    innerEl.style.setProperty("--fs-desc", `${descPx * previewScale}px`);
+    innerEl.style.setProperty("--fs-label", `${labelPx * previewScale}px`);
+    innerEl.style.setProperty("--fs-text", `${textPx * previewScale}px`);
+    innerEl.style.setProperty("--fs-footer", `${footerPx * previewScale}px`);
 
     innerEl.dataset.bucketKey = String(anchor.key || "");
     innerEl.dataset.bucketK = String(k);
@@ -984,6 +992,9 @@
     const inner = el("div", { class: "label-inner nowrap-mode" });
     inner.dataset.wcm = String(size.w);
     inner.dataset.hcm = String(size.h);
+    // Store the preview scale on the node so bucket typography can scale font sizes
+    // for on-screen previews while keeping PDF output (scale=1) identical.
+    inner.dataset.previewScale = String(previewScale || 1);
 
     const padPx = LABEL_PADDING_CM * PX_PER_CM * previewScale;
     label.style.padding = padPx + "px";
