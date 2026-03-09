@@ -37,7 +37,10 @@
 
   // Threshold: als we onder 10px content-tekst komen, dan pas zachte afbreking aanzetten
   const WRAP_THRESHOLD_PX = 10;
-  const MIN_SCALE_K = 0.02; // absolute bodem voor fallback-scale
+  // Increase the minimum scaling factor so the content never shrinks below
+  // 40% of its intended size. This maintains legibility during fallback
+  // scaling when fitting tight labels.
+  const MIN_SCALE_K = 0.4; // absolute bodem voor fallback-scale
 
   // ===== PDF =====
   const PDF_MARGIN_CM = 0.5;
@@ -629,8 +632,7 @@
     // Portrait: Narrow + Standard => Stacked, Wide => Standard
     // Landscape: Short => Columns, Standard + High => Standard
     if (family === "SQUARE") return "STANDARD";
-    if (family === "PORTRAIT")
-      return variant === "WIDE" ? "STANDARD" : "STACKED";
+    if (family === "PORTRAIT") return "STACKED";
     if (family === "LANDSCAPE")
       return variant === "SHORT" ? "COLUMNS" : "STANDARD";
     return "STANDARD";
@@ -691,8 +693,8 @@
   function elementOverflows(el, tol = 0.5) {
     if (!el) return false;
     return (
-      el.scrollWidth > el.clientWidth + tol ||
-      el.scrollHeight > el.clientHeight + tol
+      el.scrollWidth >= el.clientWidth - tol ||
+      el.scrollHeight >= el.clientHeight - tol
     );
   }
 
@@ -880,13 +882,13 @@
       // horizontal overflow ratio
       const sw = el.scrollWidth;
       const cw = el.clientWidth;
-      if (sw > 0 && sw > cw + 0.1) {
+      if (sw > 0 && sw >= cw - 0.1) {
         k = Math.min(k, cw / sw);
       }
       // vertical overflow ratio (if text wraps or too tall)
       const sh = el.scrollHeight;
       const ch = el.clientHeight;
-      if (sh > 0 && sh > ch + 0.1) {
+      if (sh > 0 && sh >= ch - 0.1) {
         k = Math.min(k, ch / sh);
       }
     });
