@@ -892,8 +892,10 @@
     });
     // Apply a slight safety margin to account for rounding/float errors
     k = Math.min(1, k * 0.995);
-    // Limit shrink to prevent unreadably small text
-    k = Math.max(0.6, k);
+    // Limit shrink to prevent unreadably small text.
+    // Allow a bit more shrink (down to 50%) so very long values (e.g. 13–14 digits)
+    // can still fit in narrow value columns without triggering full-label scaling.
+    k = Math.max(0.5, k);
     grid.style.setProperty("--spec-k", String(k));
     return k;
   }
@@ -939,7 +941,12 @@
         const vals = content.querySelectorAll(".specs-grid .val");
         let anyOverflow = false;
         vals.forEach((el) => {
-          if (el.scrollWidth > el.clientWidth + 0.5) {
+          // Detect near-overflow as well: if scrollWidth is equal to or slightly
+          // larger than the available width, treat it as overflow. A negative
+          // tolerance accounts for subpixel differences and rounding errors.
+          const sw = el.scrollWidth;
+          const cw = el.clientWidth;
+          if (sw >= cw - 0.1) {
             anyOverflow = true;
           }
         });
