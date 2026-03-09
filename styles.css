@@ -1,56 +1,12 @@
-/*
-================================================================================
-LABEL GENERATOR — styles.css  (BASE: styles_patched_v15.css)
---------------------------------------------------------------------------------
-Goal of this stylesheet:
-- Provide a role-based color system using the company brand palette (huisstijl).
-- Keep UI readable: neutral surfaces for content, brand color for emphasis (CTA/active state),
-  semantic colors for status (error/success), and clear focus indication for accessibility.
-- Maintain stable layout rules for:
-  - Tabs and panels
-  - Single/Bulk forms
-  - Preview grid + label rendering (the .label / .label-inner structure)
-  - Help tab two-column quickstart layout
-
-IMPORTANT MAINTENANCE NOTES
-- Do not change selector names casually: app.js injects markup that relies on these classes.
-- Colors should be changed via :root variables (tokens) first; avoid sprinkling new hex values.
-- The preview placeholder is styled via .preview-placeholder (JS only toggles the class).
-================================================================================
-*/
-
-/* === Design tokens (colors, radii, shadows, unit conversions) === */
 :root {
-  /* Brand (huisstijl) */
-  --brand-primary: #2c3a6b;
-  --brand-primary-2: #313c6c;
-
-  /* Semantiek & UI-kleuren (toegepast volgens beperkte, rol-gebaseerde palette) */
-  --color-page-bg: #f6f7fa;
-  --color-surface: #ffffff;
-  --color-surface-2: #f8fafc;
-  --color-surface-3: #eef2f7;
-
-  --color-border: #dde3ee;
-  --color-border-strong: #cbd5e1;
-
-  --color-text: #111;
-  --color-muted: #6b7280;
-
-  --color-focus: #6366f1;
-  --color-danger: #d32f2f;
-  --color-success: #166534;
-
-  /* Backwards-compatible names used elsewhere */
-  --brand-accent: var(--brand-primary);
-  --brand-text: var(--brand-primary-2);
-
+  --brand-accent: #2c3a6b;
+  --brand-text: #313c6c;
   --px-per-cm: 37.7952755906;
   --ui-radius: 12px;
-  --ui-border: var(--color-border);
-  --ui-bg: var(--color-surface);
-  --text: var(--color-text);
-  --muted: var(--color-muted);
+  --ui-border: #e6e8ee;
+  --ui-bg: #ededed;
+  --text: #111;
+  --muted: #6b7280;
   --shadow: 0 12px 28px rgba(0, 0, 0, 0.06);
 
   /* compat voor oudere batch styles */
@@ -59,27 +15,14 @@ IMPORTANT MAINTENANCE NOTES
 
   --border-1px: 1px;
   --code-radius: 0;
-
-  /* Aliases for legacy variable names (used in v14 layout) */
-  --bg: var(--color-page-bg); /* page background */
-  --surface: var(--color-surface); /* cards/panels */
-  --surface-2: var(--color-surface-2); /* inputs/secondary */
-  --surface-3: var(--color-surface-3); /* hover */
-  --border: var(--color-border);
-  --border-soft: var(--color-border);
-  --focus: rgba(99, 102, 241, 0.28); /* derived from --color-focus */
-  --danger: var(--color-danger);
-  --danger-soft: rgba(211, 47, 47, 0.16);
-  --success: var(--color-success);
 }
 
-/* === Base document styles (typography + page background) === */
 html,
 body {
   margin: 0;
   font-family: Arial, Helvetica, sans-serif;
   color: var(--text);
-  background: var(--bg);
+  background: #fff;
 
   min-height: 100vh;
   display: flex;
@@ -101,7 +44,7 @@ body {
   margin: 0;
   font-family: Arial, Helvetica, sans-serif;
   color: var(--text);
-  background: var(--bg);
+  background: #ffffff;
 }
 /* Ensure all form controls use the same base font */
 input,
@@ -111,8 +54,6 @@ select {
 }
 
 /* ===== Layout ===== */
-
-/* === App shell: width constraints + global spacing === */
 .app {
   flex: 1;
   width: 100%;
@@ -218,7 +159,7 @@ select {
   border-radius: 10px;
   padding: 10px 10px;
   font-size: 13px;
-  background: var(--surface-2);
+  background: #fff;
   font-family: inherit;
 }
 
@@ -236,7 +177,7 @@ select {
   border-radius: 10px;
   padding: 10px 10px;
   font-size: 13px;
-  background: var(--surface-2);
+  background: #fff;
   resize: vertical;
   min-height: 68px;
   font-family: inherit;
@@ -247,61 +188,27 @@ select {
   gap: 12px;
   justify-content: center;
   margin-top: 12px;
+  flex-wrap: wrap;
 }
 
 .btn {
-  border: 1px solid var(--color-border);
+  border: 0;
   padding: 10px 16px;
   border-radius: 10px;
   font-weight: 700;
   cursor: pointer;
-  background: var(--color-surface-2);
-  color: var(--brand-text);
-}
-
-.btn:hover {
-  background: var(--color-surface-3);
-}
-
-.btn:focus-visible {
-  outline: 3px solid var(--color-focus);
-  outline-offset: 2px;
+  background: var(--brand-accent);
+  color: #fff;
 }
 
 .btn.primary {
-  background: var(--brand-primary);
-  border-color: transparent;
+  background: var(--brand-accent);
   color: #fff;
-}
-
-.btn.primary:hover {
-  background: var(--brand-primary-2);
 }
 
 .btn.success {
-  /* behoud bestaande class, maar maak ‘m gelijk aan primary (merk-CTA) */
-  background: var(--brand-primary);
-  border-color: transparent;
+  background: var(--brand-accent);
   color: #fff;
-}
-
-.btn.success:hover {
-  background: var(--brand-primary-2);
-}
-
-.btn.danger {
-  background: var(--color-danger);
-  border-color: transparent;
-  color: #fff;
-}
-
-.btn.danger:hover {
-  background: #991b1b;
-}
-
-.btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
 }
 
 /* ===== Dims pills ===== */
@@ -323,8 +230,6 @@ select {
 }
 
 /* ===== Labels grid ===== */
-
-/* === Preview grid: 2x2 label cards on Single tab === */
 .labels-grid {
   display: grid;
   grid-template-columns: repeat(2, auto);
@@ -339,10 +244,9 @@ select {
   align-items: flex-start;
 }
 
-/* === Label rendering: outer box matches computed size; padding set by JS === */
 .label {
   border: var(--border-1px) solid #000;
-  background: var(--surface-2);
+  background: #fff;
   width: 100px;
   height: 100px;
   font-family: Arial, Helvetica, sans-serif;
@@ -359,7 +263,6 @@ select {
 
 /* ====== LABEL CONTENT ====== */
 
-/* === Label inner: contains .label-content; bucket typography sets CSS vars === */
 .label-inner {
   display: flex;
   align-items: center;
@@ -386,13 +289,25 @@ select {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  /*
+    Keep the footer line (MADE IN CHINA / C/N:____) pinned to the bottom of the
+    label.
+
+    We make the content block fill the available label area and distribute
+    remaining vertical space between sections. When JS applies a fallback scale
+    (--k < 1), the transform origin is set to the bottom so the footer stays
+    bottom-aligned instead of "floating" upward.
+  */
+  justify-content: space-between;
   text-align: center;
   gap: 0.9em;
 
+  width: 100%;
+  height: 100%;
+
   /* Fallback-scale vanuit JS (altijd alles tonen) */
   transform: scale(var(--k, 1));
-  transform-origin: center;
+  transform-origin: bottom center;
   will-change: transform;
 }
 
@@ -449,20 +364,16 @@ select {
   gap: 0.35em 0.9em;
   align-items: baseline;
   text-align: left;
-  /* Scale factor for spec values; defaults to 1. Adjusted via JS when needed */
-  --spec-k: 1;
 }
 
 .specs-grid .key {
   font-weight: 900;
-  /* Multiply label font by spec scale factor to shrink uniformly when needed */
-  font-size: calc(var(--fs-label) * var(--spec-k));
+  font-size: var(--fs-label);
   white-space: nowrap;
 }
 
 .specs-grid .val {
-  /* Multiply text font by spec scale factor */
-  font-size: calc(var(--fs-text) * var(--spec-k));
+  font-size: var(--fs-text);
 }
 
 /* ===== Bucket-dependent layouts ===== */
@@ -472,6 +383,7 @@ select {
 .label-inner.layout-stacked .label-content {
   align-items: flex-start;
   text-align: left;
+  transform-origin: bottom left;
 }
 
 .label-inner.layout-stacked .erp-box {
@@ -506,21 +418,6 @@ select {
   margin-right: auto;
 }
 
-/* === Fit & alignment in non-centered layouts ===
-   For STACKED and COLUMNS we want the whole content block to align to the top-left of the label.
-   This avoids the "floating center-left" look when fallback scaling (--k) is applied and prevents
-   perceived misalignment in very short labels.
-*/
-.label-inner.layout-stacked,
-.label-inner.layout-columns {
-  justify-content: flex-start;
-  align-items: flex-start;
-}
-
-.label-inner.layout-stacked .label-content,
-.label-inner.layout-columns .label-content {
-  transform-origin: top left;
-}
 /* Columns: product description left, specs column on the right. */
 .label-inner.layout-columns .label-content {
   display: grid;
@@ -533,6 +430,8 @@ select {
   align-items: start;
   gap: 0.5em 0.8em;
   text-align: left;
+  height: 100%;
+  transform-origin: bottom left;
 }
 
 .label-inner.layout-columns .erp-box {
@@ -624,8 +523,6 @@ select {
 }
 
 /* ===== Panels (compat) ===== */
-
-/* === Panel surfaces: card-like containers for each section === */
 .panel {
   border: 1px solid var(--ui-border);
   background: var(--ui-bg);
@@ -640,17 +537,30 @@ select {
   color: var(--brand-text);
 }
 
-.dims-grid-head,
-.dims-grid {
+/* ===== Calculated label dimensions: clean 3-column rows (no extra/empty column) ===== */
+.dims-head-row {
   display: grid;
-  grid-template-columns: 1fr 0.6fr 0.6fr 1fr;
+  grid-template-columns: 1fr 0.6fr 0.6fr;
   gap: 6px 10px;
+  font-size: 12px;
+  color: #666;
+  margin-bottom: 6px;
 }
 
-.dims-grid-head {
-  font-size: 12px;
-  color: var(--muted);
-  margin-bottom: 6px;
+.dims-head-cell {
+  padding: 0 2px;
+}
+
+.dims-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dims-row {
+  display: grid;
+  grid-template-columns: 1fr 0.6fr 0.6fr;
+  gap: 6px 10px;
 }
 
 .dim {
@@ -661,11 +571,16 @@ select {
   font-size: 13px;
 }
 
-.dim:nth-child(4n + 2),
-.dim:nth-child(4n + 3) {
+.dims-row .dim:nth-child(2),
+.dims-row .dim:nth-child(3) {
   text-align: right;
 }
 
+/* Buttons */
+.btn.danger {
+  background: var(--brand-accent);
+  color: #fff;
+}
 .btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
@@ -691,16 +606,16 @@ select {
   justify-content: center;
   min-height: 56px;
   padding: 10px 14px;
-  border: 2px dashed var(--border);
+  border: 2px dashed #cbd5e1;
   border-radius: 12px;
-  background: var(--surface-2);
-  color: var(--brand-text);
+  background: #f8fafc;
+  color: #334155;
   cursor: pointer;
   flex: 1;
 }
 .dropzone.dragover {
-  background: var(--surface);
-  border-color: var(--brand-accent);
+  background: #eef2ff;
+  border-color: #6366f1;
 }
 
 .batch-actions {
@@ -719,28 +634,9 @@ select {
   left: -10000px;
   top: 0;
   width: 1100px; /* stable width for computePreviewScale */
-  background: var(--surface-2);
+  background: #fff;
   opacity: 0;
   pointer-events: none;
-}
-
-/* Off-screen host for single-PDF rendering (same intent as .batch-render-host). */
-.pdf-render-host {
-  position: fixed;
-  left: -10000px;
-  top: 0;
-  width: 1100px;
-  background: #ffffff;
-  opacity: 0;
-  pointer-events: none;
-}
-
-/* PDF mode: keep padding/border inside the computed label dimensions.
-   Without this, the captured PNG becomes (w+padding+border)×(h+padding+border) and
-   jsPDF stretches it back to w×h, causing non-uniform scaling. */
-.pdf-mode .label {
-  box-sizing: border-box;
-  background: #ffffff;
 }
 
 .mapping-grid {
@@ -755,17 +651,17 @@ select {
   align-items: center;
 }
 .mapping-grid label {
-  color: var(--brand-text);
+  color: #374151;
 }
 .mapping-grid select {
   padding: 8px 10px;
-  border: 1px solid var(--border);
+  border: 1px solid #cbd5e1;
   border-radius: 8px;
-  background: var(--surface-2);
+  background: #fff;
 }
 
 .table-wrap {
-  background: var(--surface-2);
+  background: #fff;
   border: 1px solid var(--ui-border);
   border-radius: 10px;
   padding: 8px;
@@ -782,7 +678,7 @@ select {
 }
 .progress-bar {
   height: 10px;
-  background: var(--border-soft);
+  background: #e5e7eb;
   border-radius: 999px;
   overflow: hidden;
 }
@@ -794,12 +690,12 @@ select {
 .progress-text {
   display: flex;
   justify-content: space-between;
-  color: var(--brand-text);
+  color: #374151;
   font-size: 13px;
 }
 
 .log-wrap {
-  background: var(--surface-2);
+  background: #fff;
   border: 1px solid var(--ui-border);
   border-radius: 10px;
   padding: 10px;
@@ -813,15 +709,13 @@ select {
   font-size: 12px;
 }
 .log-list .ok {
-  color: var(--success);
+  color: #166534;
 }
 .log-list .err {
-  color: var(--danger);
+  color: #991b1b;
 }
 
 /* ====== Tabs ====== */
-
-/* === Tabs: button row + active state styling === */
 .tabs {
   display: flex;
   gap: 8px;
@@ -848,7 +742,7 @@ select {
 
 .tab-btn.active {
   color: var(--brand-text);
-  border-bottom-color: var(--brand-accent);
+  border-bottom-color: var(--brand-text);
 }
 
 .tab-panels {
@@ -872,13 +766,13 @@ select {
 
 /* Single UI validation */
 .field input.is-invalid {
-  border-color: var(--danger);
-  box-shadow: 0 0 0 3px var(--danger-soft);
+  border-color: #d32f2f;
+  box-shadow: 0 0 0 3px rgba(211, 47, 47, 0.12);
 }
 
 .field-error {
   margin-top: 6px;
-  color: var(--danger);
+  color: #d32f2f;
   font-size: 12px;
   line-height: 1.2;
 }
@@ -900,7 +794,7 @@ body {
 
 .app-footer {
   width: 100%;
-  background: var(--surface);
+  background: #f6f7fa;
   border-top: 1px solid var(--ui-border);
   padding: 10px 0;
   color: var(--muted);
@@ -934,143 +828,4 @@ body {
   color: var(--brand-accent);
   text-decoration: underline;
   text-underline-offset: 2px;
-}
-
-/* Help tab: two-column quick start blocks */
-
-/* === Help tab: two-column quickstart layout (responsive) === */
-.help-quickstart-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 14px;
-  margin: 10px 0 6px;
-}
-.help-quickstart-col {
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--surface);
-}
-.help-quickstart-col h3 {
-  margin-top: 0;
-}
-@media (max-width: 760px) {
-  .help-quickstart-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-/* Focus styles */
-.field input:focus-visible,
-.field textarea:focus-visible,
-select:focus-visible,
-.tab-btn:focus-visible,
-.btn:focus-visible {
-  outline: 3px solid var(--focus);
-  outline-offset: 2px;
-}
-
-/* Help tab */
-.muted {
-  color: var(--muted);
-  font-size: 13px;
-  line-height: 1.4;
-}
-
-.help-muted {
-  margin-top: 6px;
-}
-
-.help-table-wrap {
-  overflow-x: auto;
-  margin-top: 8px;
-}
-
-.help-table {
-  width: 100%;
-  border-collapse: collapse;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  overflow: hidden;
-}
-
-.help-table th,
-.help-table td {
-  text-align: left;
-  padding: 8px;
-  border-bottom: 1px solid var(--border-soft);
-  vertical-align: top;
-}
-
-.help-table thead th {
-  font-weight: 700;
-  color: var(--brand-text);
-  background: var(--surface);
-}
-
-.help-table tbody tr:last-child td {
-  border-bottom: 0;
-}
-
-/* === Empty preview state: shown when no Single input is provided yet === */
-.preview-placeholder {
-  grid-column: 1 / -1;
-  text-align: center;
-  padding: 28px 16px;
-  border: 1px dashed var(--border);
-  border-radius: 10px;
-  color: var(--muted);
-}
-
-/* ====== SELFTEST (developer/regression guard UI) ======
-   Kept minimal and visually consistent with the Help tab.
-*/
-details.selftest {
-  margin-top: 16px;
-  padding: 12px;
-  border: 1px solid var(--ui-border);
-  border-radius: 12px;
-  background: var(--surface-2);
-}
-
-details.selftest > summary {
-  cursor: pointer;
-  font-weight: 700;
-  color: var(--brand-text);
-}
-
-.selftest-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin: 10px 0;
-}
-
-.selftest-summary {
-  margin-top: 8px;
-}
-
-.selftest-log {
-  margin-top: 10px;
-  padding: 10px;
-  border-radius: 10px;
-  border: 1px solid var(--ui-border);
-  background: #ffffff;
-  font-family:
-    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
-    "Courier New", monospace;
-  font-size: 12px;
-  line-height: 1.45;
-  max-height: 260px;
-  overflow: auto;
-  white-space: pre-wrap;
-}
-
-.selftest-log .ok {
-  color: #0a7a2f;
-}
-
-.selftest-log .err {
-  color: #b00;
 }
