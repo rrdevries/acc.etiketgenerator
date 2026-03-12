@@ -758,58 +758,6 @@
     );
   }
 
-  function measureInlineWidth(el) {
-    if (!el) return 0;
-
-    const measuredNoWrapWidth = measureNoWrapTextWidth(el);
-    if (measuredNoWrapWidth != null) return measuredNoWrapWidth;
-
-    return Math.max(
-      el.scrollWidth || 0,
-      el.clientWidth || 0,
-      el.getBoundingClientRect?.().width || 0,
-    );
-  }
-
-  function specsGridScaleNeed(innerEl, guardX) {
-    const grid = innerEl.querySelector(".specs-grid");
-    if (!grid) return 1;
-
-    if (
-      innerEl.classList.contains("layout-stacked") ||
-      innerEl.classList.contains("layout-columns")
-    ) {
-      return 1;
-    }
-
-    const keys = [...grid.querySelectorAll(".key")];
-    const vals = [...grid.querySelectorAll(".val")];
-    if (!keys.length || !vals.length) return 1;
-
-    const cs = getComputedStyle(grid);
-    const gapX =
-      Number.parseFloat(cs.columnGap || "") ||
-      Number.parseFloat(cs.gap || "") ||
-      0;
-
-    const maxKeyW = Math.max(
-      0,
-      ...keys.map((node) => measureInlineWidth(node)),
-    );
-    const maxValW = Math.max(
-      0,
-      ...vals.map((node) => measureInlineWidth(node)),
-    );
-
-    // Small safety buffer for sub-pixel rasterization at the right edge.
-    const requiredW = maxKeyW + gapX + maxValW + 1;
-    const safeW = Math.max(1, innerEl.clientWidth - guardX * 2);
-
-    if (requiredW <= safeW + 0.5) return 1;
-
-    return Math.max(MIN_SCALE_K, Math.min(1, safeW / requiredW));
-  }
-
   function intrinsicFits(innerEl, guardX, guardY) {
     const content = innerEl.querySelector(".label-content") || innerEl;
 
@@ -824,8 +772,6 @@
 
     const grid = content.querySelector(".specs-grid");
     if (grid && elementOverflows(grid)) return false;
-
-    if (specsGridScaleNeed(innerEl, guardX) < 0.9995) return false;
 
     return (
       content.scrollWidth <= innerEl.clientWidth - guardX * 2 &&
@@ -862,7 +808,6 @@
 
     let scaleW = availW / sw;
     let scaleH = availH / sh;
-    let scaleSpecs = specsGridScaleNeed(innerEl, guardX);
 
     // Corrigeer extra voor overflow in specifieke blokken (vals/desc/ERP/footer)
     let scaleChild = 1;
@@ -889,10 +834,7 @@
       }
     });
 
-    const k = Math.max(
-      MIN_SCALE_K,
-      Math.min(1, scaleW, scaleH, scaleChild, scaleSpecs),
-    );
+    const k = Math.max(MIN_SCALE_K, Math.min(1, scaleW, scaleH, scaleChild));
     content.style.setProperty("--k", String(k));
     return k;
   }
