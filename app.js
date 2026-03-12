@@ -771,36 +771,26 @@
     );
   }
 
-  function resetSpecsGridScale(innerEl) {
-    const grid = innerEl.querySelector(".specs-grid");
-    if (!grid) return;
-
-    grid.style.removeProperty("transform");
-    grid.style.removeProperty("transform-origin");
-  }
-
-  function ensureSpecsGridFits(innerEl, guardX) {
+  function specsGridScaleNeed(innerEl, guardX) {
     const grid = innerEl.querySelector(".specs-grid");
     if (!grid) return 1;
 
-    // Keep this local to the default STANDARD 2-column specs layout.
     if (
       innerEl.classList.contains("layout-stacked") ||
       innerEl.classList.contains("layout-columns")
     ) {
-      resetSpecsGridScale(innerEl);
       return 1;
     }
 
     const keys = [...grid.querySelectorAll(".key")];
     const vals = [...grid.querySelectorAll(".val")];
-    if (!keys.length || !vals.length) {
-      resetSpecsGridScale(innerEl);
-      return 1;
-    }
+    if (!keys.length || !vals.length) return 1;
 
     const cs = getComputedStyle(grid);
-    const gapX = Number.parseFloat(cs.columnGap || "") || 0;
+    const gapX =
+      Number.parseFloat(cs.columnGap || "") ||
+      Number.parseFloat(cs.gap || "") ||
+      0;
 
     const maxKeyW = Math.max(
       0,
@@ -815,15 +805,9 @@
     const requiredW = maxKeyW + gapX + maxValW + 1;
     const safeW = Math.max(1, innerEl.clientWidth - guardX * 2);
 
-    if (requiredW <= safeW + 0.5) {
-      resetSpecsGridScale(innerEl);
-      return 1;
-    }
+    if (requiredW <= safeW + 0.5) return 1;
 
-    const k = Math.max(MIN_SCALE_K, Math.min(1, safeW / requiredW));
-    grid.style.transform = `scale(${k})`;
-    grid.style.transformOrigin = "center top";
-    return k;
+    return Math.max(MIN_SCALE_K, Math.min(1, safeW / requiredW));
   }
 
   function intrinsicFits(innerEl, guardX, guardY) {
@@ -840,6 +824,8 @@
 
     const grid = content.querySelector(".specs-grid");
     if (grid && elementOverflows(grid)) return false;
+
+    if (specsGridScaleNeed(innerEl, guardX) < 0.9995) return false;
 
     return (
       content.scrollWidth <= innerEl.clientWidth - guardX * 2 &&
@@ -876,6 +862,7 @@
 
     let scaleW = availW / sw;
     let scaleH = availH / sh;
+    let scaleSpecs = specsGridScaleNeed(innerEl, guardX);
 
     // Corrigeer extra voor overflow in specifieke blokken (vals/desc/ERP/footer)
     let scaleChild = 1;
@@ -902,7 +889,10 @@
       }
     });
 
-    const k = Math.max(MIN_SCALE_K, Math.min(1, scaleW, scaleH, scaleChild));
+    const k = Math.max(
+      MIN_SCALE_K,
+      Math.min(1, scaleW, scaleH, scaleChild, scaleSpecs),
+    );
     content.style.setProperty("--k", String(k));
     return k;
   }
@@ -948,8 +938,6 @@
     const guardX = Math.max(2, w * 0.015);
     const guardY = Math.max(2, h * 0.015);
 
-    resetSpecsGridScale(innerEl);
-
     // 1) apply bucket typography
     const info = applyBucketTypography(innerEl);
 
@@ -974,9 +962,6 @@
 
     // 4) final safety net: scale down whole content if needed (intrinsic + visual check)
     ensureContentFits(innerEl, guardX, guardY);
-
-    // 5) Extra guard for tight STANDARD specs grids: shrink labels + values together.
-    ensureSpecsGridFits(innerEl, guardX);
   }
 
   async function mountThenFit(container) {
