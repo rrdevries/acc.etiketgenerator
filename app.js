@@ -873,36 +873,50 @@
     return k;
   }
 
-  function alignFooterBottomCenter(innerEl, guardX, guardY) {
+  function resetFooterOverlay(innerEl) {
+    innerEl
+      .querySelectorAll(".footer-overlay")
+      .forEach((node) => node.remove());
+
+    const content = innerEl.querySelector(".label-content") || innerEl;
+    const footer = content?.querySelector(".footer-text");
+    if (footer) footer.classList.remove("is-footer-placeholder");
+  }
+
+  function syncFooterOverlay(innerEl, guardX, guardY) {
     const content = innerEl.querySelector(".label-content") || innerEl;
     const footer = content?.querySelector(".footer-text");
     if (!content || !footer) return;
 
-    footer.style.transform = "";
-    footer.style.textAlign = "center";
+    const text = (footer.textContent || "").trim();
+    if (!text) return;
 
-    const scale = Math.max(
+    footer.classList.add("is-footer-placeholder");
+
+    const overlay = el("div", {
+      class: "footer-overlay",
+      "aria-hidden": "true",
+    });
+    overlay.style.bottom = `${guardY}px`;
+
+    const overlayText = el("div", { class: "footer-overlay-text" }, text);
+    const k = Math.max(
       MIN_SCALE_K,
       parseFloat(content.style.getPropertyValue("--k")) || 1,
     );
+    overlayText.style.transform = `scale(${k})`;
+
+    overlay.append(overlayText);
+    innerEl.append(overlay);
 
     const ir = innerEl.getBoundingClientRect();
-    const fr = footer.getBoundingClientRect();
+    const or = overlay.getBoundingClientRect();
+    let dx = 0;
 
-    const targetCenterX = ir.left + ir.width / 2;
-    const currentCenterX = fr.left + fr.width / 2;
-    const desiredDx = targetCenterX - currentCenterX;
+    if (or.left < ir.left + guardX) dx = ir.left + guardX - or.left;
+    if (or.right > ir.right - guardX) dx = ir.right - guardX - or.right;
 
-    const maxLeftDx = ir.left + guardX - fr.left;
-    const maxRightDx = ir.right - guardX - fr.right;
-    const clampedDx = Math.min(maxRightDx, Math.max(maxLeftDx, desiredDx));
-
-    const maxDownDy = ir.bottom - guardY - fr.bottom;
-    const clampedDy = Math.max(0, maxDownDy);
-
-    if (Math.abs(clampedDx) < 0.25 && Math.abs(clampedDy) < 0.25) return;
-
-    footer.style.transform = `translate(${clampedDx / scale}px, ${clampedDy / scale}px)`;
+    if (Math.abs(dx) > 0.25) overlay.style.marginLeft = `${dx}px`;
   }
 
   function applyBucketThenFit(innerEl) {
@@ -911,6 +925,8 @@
 
     const guardX = Math.max(2, w * 0.015);
     const guardY = Math.max(2, h * 0.015);
+
+    resetFooterOverlay(innerEl);
 
     // 1) apply bucket typography
     const info = applyBucketTypography(innerEl);
@@ -937,8 +953,8 @@
     // 4) final safety net: scale down whole content if needed (intrinsic + visual check)
     ensureContentFits(innerEl, guardX, guardY);
 
-    // 5) Footer rule: keep only the footer text visually bottom-centered without changing other blocks.
-    alignFooterBottomCenter(innerEl, guardX, guardY);
+    // 5) Keep the visible footer bottom-centered without changing content flow/fit.
+    syncFooterOverlay(innerEl, guardX, guardY);
   }
 
   async function mountThenFit(container) {
