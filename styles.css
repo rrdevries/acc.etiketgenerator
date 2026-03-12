@@ -497,8 +497,8 @@ select {
 }
 
 .label-inner.layout-stacked .footer-text {
-  text-align: left;
-  margin-left: 0;
+  text-align: center;
+  margin-left: auto;
   margin-right: auto;
 }
 
@@ -525,7 +525,7 @@ select {
   grid-template-areas:
     "erp specs"
     "desc specs"
-    "footer specs";
+    "footer footer";
   align-items: start;
   gap: 0.5em 0.8em;
   text-align: left;
@@ -553,8 +553,8 @@ select {
 
 .label-inner.layout-columns .footer-text {
   grid-area: footer;
-  justify-self: start;
-  text-align: left;
+  justify-self: center;
+  text-align: center;
   margin: 0;
 }
 

@@ -873,6 +873,38 @@
     return k;
   }
 
+  function alignFooterBottomCenter(innerEl, guardX, guardY) {
+    const content = innerEl.querySelector(".label-content") || innerEl;
+    const footer = content?.querySelector(".footer-text");
+    if (!content || !footer) return;
+
+    footer.style.transform = "";
+    footer.style.textAlign = "center";
+
+    const scale = Math.max(
+      MIN_SCALE_K,
+      parseFloat(content.style.getPropertyValue("--k")) || 1,
+    );
+
+    const ir = innerEl.getBoundingClientRect();
+    const fr = footer.getBoundingClientRect();
+
+    const targetCenterX = ir.left + ir.width / 2;
+    const currentCenterX = fr.left + fr.width / 2;
+    const desiredDx = targetCenterX - currentCenterX;
+
+    const maxLeftDx = ir.left + guardX - fr.left;
+    const maxRightDx = ir.right - guardX - fr.right;
+    const clampedDx = Math.min(maxRightDx, Math.max(maxLeftDx, desiredDx));
+
+    const maxDownDy = ir.bottom - guardY - fr.bottom;
+    const clampedDy = Math.max(0, maxDownDy);
+
+    if (Math.abs(clampedDx) < 0.25 && Math.abs(clampedDy) < 0.25) return;
+
+    footer.style.transform = `translate(${clampedDx / scale}px, ${clampedDy / scale}px)`;
+  }
+
   function applyBucketThenFit(innerEl) {
     const w = innerEl.clientWidth;
     const h = innerEl.clientHeight;
@@ -904,6 +936,9 @@
 
     // 4) final safety net: scale down whole content if needed (intrinsic + visual check)
     ensureContentFits(innerEl, guardX, guardY);
+
+    // 5) Footer rule: keep only the footer text visually bottom-centered without changing other blocks.
+    alignFooterBottomCenter(innerEl, guardX, guardY);
   }
 
   async function mountThenFit(container) {
