@@ -365,7 +365,6 @@ select {
   align-items: center;
   justify-content: center;
   text-align: center;
-  position: relative;
 
   width: 100%;
   height: 100%;
@@ -425,28 +424,6 @@ select {
   font-size: var(--fs-footer);
   line-height: 1.1;
   text-transform: uppercase;
-}
-
-.footer-text.is-footer-placeholder {
-  visibility: hidden;
-}
-
-.footer-overlay {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  text-align: center;
-  pointer-events: none;
-  z-index: 1;
-}
-
-.footer-overlay-text {
-  display: block;
-  font-size: var(--fs-footer);
-  line-height: 1.1;
-  text-transform: uppercase;
-  white-space: nowrap;
-  transform-origin: bottom center;
 }
 
 /* Bucket-scaled ERP box */

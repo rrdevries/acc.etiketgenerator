@@ -873,60 +873,12 @@
     return k;
   }
 
-  function resetFooterOverlay(innerEl) {
-    innerEl
-      .querySelectorAll(".footer-overlay")
-      .forEach((node) => node.remove());
-
-    const content = innerEl.querySelector(".label-content") || innerEl;
-    const footer = content?.querySelector(".footer-text");
-    if (footer) footer.classList.remove("is-footer-placeholder");
-  }
-
-  function syncFooterOverlay(innerEl, guardX, guardY) {
-    const content = innerEl.querySelector(".label-content") || innerEl;
-    const footer = content?.querySelector(".footer-text");
-    if (!content || !footer) return;
-
-    const text = (footer.textContent || "").trim();
-    if (!text) return;
-
-    footer.classList.add("is-footer-placeholder");
-
-    const overlay = el("div", {
-      class: "footer-overlay",
-      "aria-hidden": "true",
-    });
-    overlay.style.bottom = `${guardY}px`;
-
-    const overlayText = el("div", { class: "footer-overlay-text" }, text);
-    const k = Math.max(
-      MIN_SCALE_K,
-      parseFloat(content.style.getPropertyValue("--k")) || 1,
-    );
-    overlayText.style.transform = `scale(${k})`;
-
-    overlay.append(overlayText);
-    innerEl.append(overlay);
-
-    const ir = innerEl.getBoundingClientRect();
-    const or = overlay.getBoundingClientRect();
-    let dx = 0;
-
-    if (or.left < ir.left + guardX) dx = ir.left + guardX - or.left;
-    if (or.right > ir.right - guardX) dx = ir.right - guardX - or.right;
-
-    if (Math.abs(dx) > 0.25) overlay.style.marginLeft = `${dx}px`;
-  }
-
   function applyBucketThenFit(innerEl) {
     const w = innerEl.clientWidth;
     const h = innerEl.clientHeight;
 
     const guardX = Math.max(2, w * 0.015);
     const guardY = Math.max(2, h * 0.015);
-
-    resetFooterOverlay(innerEl);
 
     // 1) apply bucket typography
     const info = applyBucketTypography(innerEl);
@@ -952,9 +904,6 @@
 
     // 4) final safety net: scale down whole content if needed (intrinsic + visual check)
     ensureContentFits(innerEl, guardX, guardY);
-
-    // 5) Keep the visible footer bottom-centered without changing content flow/fit.
-    syncFooterOverlay(innerEl, guardX, guardY);
   }
 
   async function mountThenFit(container) {
