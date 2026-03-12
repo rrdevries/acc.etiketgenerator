@@ -758,6 +758,74 @@
     );
   }
 
+  function measureInlineWidth(el) {
+    if (!el) return 0;
+
+    const measuredNoWrapWidth = measureNoWrapTextWidth(el);
+    if (measuredNoWrapWidth != null) return measuredNoWrapWidth;
+
+    return Math.max(
+      el.scrollWidth || 0,
+      el.clientWidth || 0,
+      el.getBoundingClientRect?.().width || 0,
+    );
+  }
+
+  function resetSpecsGridScale(innerEl) {
+    const grid = innerEl.querySelector(".specs-grid");
+    if (!grid) return;
+
+    grid.style.removeProperty("transform");
+    grid.style.removeProperty("transform-origin");
+  }
+
+  function ensureSpecsGridFits(innerEl, guardX) {
+    const grid = innerEl.querySelector(".specs-grid");
+    if (!grid) return 1;
+
+    // Keep this local to the default STANDARD 2-column specs layout.
+    if (
+      innerEl.classList.contains("layout-stacked") ||
+      innerEl.classList.contains("layout-columns")
+    ) {
+      resetSpecsGridScale(innerEl);
+      return 1;
+    }
+
+    const keys = [...grid.querySelectorAll(".key")];
+    const vals = [...grid.querySelectorAll(".val")];
+    if (!keys.length || !vals.length) {
+      resetSpecsGridScale(innerEl);
+      return 1;
+    }
+
+    const cs = getComputedStyle(grid);
+    const gapX = Number.parseFloat(cs.columnGap || "") || 0;
+
+    const maxKeyW = Math.max(
+      0,
+      ...keys.map((node) => measureInlineWidth(node)),
+    );
+    const maxValW = Math.max(
+      0,
+      ...vals.map((node) => measureInlineWidth(node)),
+    );
+
+    // Small safety buffer for sub-pixel rasterization at the right edge.
+    const requiredW = maxKeyW + gapX + maxValW + 1;
+    const safeW = Math.max(1, innerEl.clientWidth - guardX * 2);
+
+    if (requiredW <= safeW + 0.5) {
+      resetSpecsGridScale(innerEl);
+      return 1;
+    }
+
+    const k = Math.max(MIN_SCALE_K, Math.min(1, safeW / requiredW));
+    grid.style.transform = `scale(${k})`;
+    grid.style.transformOrigin = "center top";
+    return k;
+  }
+
   function intrinsicFits(innerEl, guardX, guardY) {
     const content = innerEl.querySelector(".label-content") || innerEl;
 
@@ -880,6 +948,8 @@
     const guardX = Math.max(2, w * 0.015);
     const guardY = Math.max(2, h * 0.015);
 
+    resetSpecsGridScale(innerEl);
+
     // 1) apply bucket typography
     const info = applyBucketTypography(innerEl);
 
@@ -904,6 +974,9 @@
 
     // 4) final safety net: scale down whole content if needed (intrinsic + visual check)
     ensureContentFits(innerEl, guardX, guardY);
+
+    // 5) Extra guard for tight STANDARD specs grids: shrink labels + values together.
+    ensureSpecsGridFits(innerEl, guardX);
   }
 
   async function mountThenFit(container) {
