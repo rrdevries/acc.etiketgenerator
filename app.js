@@ -1,12 +1,34 @@
 (() => {
   /*
-    Refactor (bucket typography):
-    - Bucket config loaded from ./labelBuckets.json
-    - Preview / PDF / Batch flows unchanged
-    - Typography is driven by bucket anchors; final safety net keeps "always render" behavior
+  ============================================================================
+  LABEL GENERATOR — app.js (client-side controller)
+  ----------------------------------------------------------------------------
+  What this script does
+  - Handles tab navigation (Single / Bulk upload / Help).
+  - Single flow: read inputs -> compute 4 label faces -> render preview -> fit typography.
+  - PDF flow: render labels in a stable offscreen layout -> capture via html2canvas -> build a single PDF (jsPDF).
+  - Bulk flow: parse XLSX/CSV -> map columns -> validate rows -> generate many PDFs -> zip as download (JSZip).
+
+  Non-obvious invariants (business rules)
+  - Box dimensions are validated: 5–120 cm inclusive.
+  - Label face size is always 0.9 * corresponding box face (10% smaller each side).
+  - Layout (Standard / Stacked / Columns) is derived from the bucket key:
+      * PORTRAIT: NARROW/STANDARD => Stacked, WIDE => Standard
+      * LANDSCAPE: SHORT => Columns, STANDARD/HIGH => Standard
+      * SQUARE: Standard
+  - Typography is bucket-driven: labelBuckets.json provides anchor font sizes (pt) per bucket.
+    We scale anchors to the actual label size and then apply a final fit/scale fallback if needed.
+
+  Maintenance tips
+  - HTML element IDs used below must remain stable (see index.html).
+  - Keep color/styling out of JS: use CSS classes and CSS variables instead.
+  ============================================================================
   */
 
-  /* ====== CONSTANTS ====== */
+  /* ====== CONSTANTS ======
+   Unit conversions, thresholds, and shared state.
+   Keep these centralized: they affect preview sizing, PDF sizing, and fit logic.
+*/
   const PX_PER_CM = 37.7952755906;
   const PX_PER_PT = 96 / 72; // 1pt = 1/72 inch; CSS px = 1/96 inch
 
@@ -24,10 +46,20 @@
 
   // Enforce allowed box dimension range (cm)
   const BOX_CM_MIN = 5;
-  const BOX_CM_MAX = 100;
-  /* ====== Bucket config ====== */
+  const BOX_CM_MAX = 120;
+  /* ====== BUCKET CONFIG ======
+   Bucket anchors are loaded from labelBuckets.json.
+   BUCKET_BY_KEY provides O(1) lookup for typography anchors.
+*/
   let BUCKET_CONFIG = null;
   let BUCKET_BY_KEY = new Map();
+
+  /**
+   * Fetches the bucket typography config (labelBuckets.json).
+   * This MUST be served via http(s) due to fetch() restrictions; file:// will fail in most browsers.
+   * @param {string} url - Relative/absolute URL to the JSON config.
+   * @returns {Promise<object>} Parsed config object with an `anchors` array.
+   */
 
   async function loadBucketConfig(url = "./labelBuckets.json") {
     const res = await fetch(url, { cache: "no-store" });
@@ -59,6 +91,18 @@
   function ptToPx(pt) {
     return (Number(pt) || 0) * PX_PER_PT;
   }
+
+  /**
+   * Computes a bucket key from label face dimensions.
+   * Bucket key format examples:
+   *   - SQUARE_SMALL
+   *   - PORTRAIT_MEDIUM_STANDARD
+   *   - LANDSCAPE_EXTRA_LARGE_SHORT
+   * Note: EXTRA_LARGE is two tokens and must be handled carefully when parsing later.
+   * @param {number} W_cm - label width in cm
+   * @param {number} H_cm - label height in cm
+   * @returns {string|null} Bucket key or null if inputs invalid.
+   */
 
   function selectBucketKeyFor(W_cm, H_cm) {
     // Inputs are label face dimensions (cm)
@@ -98,7 +142,7 @@
     else if (D >= 10 && D < 25) sizeClass = "SMALL";
     else if (D >= 25 && D < 40) sizeClass = "MEDIUM";
     else if (D >= 40 && D < 70) sizeClass = "LARGE";
-    else if (D >= 70 && D <= 100) sizeClass = "EXTRA_LARGE";
+    else if (D >= 70 && D <= 120) sizeClass = "EXTRA_LARGE";
 
     if (!sizeClass) return null;
 
@@ -175,7 +219,10 @@
     };
   }
 
-  /* ====== Helpers ====== */
+  /* ====== DOM HELPERS ======
+   Small helpers for querying and building DOM safely.
+   NOTE: Avoid adding styling inline; prefer classes handled by styles.css.
+*/
   const $ = (sel) => document.querySelector(sel);
 
   function initTabs() {
@@ -291,7 +338,10 @@
     return n.toFixed(2);
   }
 
-  /* ====== Single UI: box dimension validation (5–100 cm) ====== */
+  /* ====== SINGLE INPUT VALIDATION (5–120 cm) ======
+   Only len/wid/hei are range-validated.
+   Errors are shown inline (adds .is-invalid and a .field-error element).
+*/
   function ensureInlineError(inputEl) {
     if (!inputEl) return null;
     const host = inputEl.closest(".field") || inputEl.parentElement;
@@ -450,7 +500,10 @@
     desc.style.fontSize = best + "px";
   }
 
-  /* ====== Label sizes (Optie A: 0.9) ====== */
+  /* ====== LABEL GEOMETRY ======
+   Calculates the four label faces based on box dimensions.
+   Business rule: 0.9 scaling factor in both directions.
+*/
   function calcLabelSizes(values) {
     const L = values.len || 0;
     const W = values.wid || 0;
@@ -492,21 +545,27 @@
   }
 
   function renderDims(sizes, opts = {}) {
+    const { includeBucket = false } = opts;
     const dims = $("#dims");
     if (!dims) return;
 
     dims.innerHTML = "";
 
-    // Render as explicit 3-cell rows to avoid any accidental extra/empty column.
     sizes.forEach((s) => {
-      const row = el(
-        "div",
-        { class: "dims-row", role: "row" },
-        el("div", { class: "dim", role: "cell" }, s.name),
-        el("div", { class: "dim", role: "cell" }, format2(s.w)),
-        el("div", { class: "dim", role: "cell" }, format2(s.h)),
+      let bucketUi = "";
+      if (includeBucket) {
+        const picked = determineBucket(s.w, s.h);
+        const name = bucketKeyToUiName(picked.bucketKey);
+        bucketUi =
+          name === "—" ? "—" : `${name} (${layoutToUiName(picked.layout)})`;
+      }
+
+      dims.append(
+        el("div", { class: "dim" }, s.name),
+        el("div", { class: "dim" }, format2(s.w)),
+        el("div", { class: "dim" }, format2(s.h)),
+        el("div", { class: "dim" }, bucketUi),
       );
-      dims.append(row);
     });
   }
 
@@ -533,10 +592,37 @@
     return [family, size, ...rest].filter(Boolean).join("-");
   }
 
+  /**
+   * Maps a bucket key to a layout class.
+   * Layout drives CSS structure:
+   *   - STANDARD: ERP + description + specs stacked vertically
+   *   - STACKED: portrait narrow/standard uses a tighter vertical stacking
+   *   - COLUMNS: landscape short uses a two-column layout for specs
+   * IMPORTANT: Keys containing EXTRA_LARGE split into two tokens (EXTRA, LARGE).
+   * @param {string} bucketKey
+   * @returns {"STANDARD"|"STACKED"|"COLUMNS"}
+   */
+
   function layoutForBucketKey(bucketKey) {
     const parts = String(bucketKey || "").split("_");
     const family = (parts[0] || "").toUpperCase();
-    const variant = parts.slice(2).join("_").toUpperCase();
+
+    // bucketKey examples:
+    // - LANDSCAPE_SMALL_SHORT
+    // - LANDSCAPE_EXTRA_LARGE_SHORT  (sizeClass is two tokens)
+    // - PORTRAIT_MEDIUM_STANDARD
+    // - SQUARE_LARGE
+    let variant = "";
+    if (
+      parts[1] &&
+      parts[2] &&
+      parts[1].toUpperCase() === "EXTRA" &&
+      parts[2].toUpperCase() === "LARGE"
+    ) {
+      variant = parts.slice(3).join("_").toUpperCase();
+    } else {
+      variant = parts.slice(2).join("_").toUpperCase();
+    }
 
     // Layout mapping (per bucket family + variant)
     // Square: always Standard
@@ -582,55 +668,131 @@
     });
   }
 
-  /* ====== Fit / guard / fallback ====== */
-  // In some edge cases a value can appear to fit according to integer
-  // scrollWidth/clientWidth, but still clip the last character due to
-  // subpixel rounding. To avoid shrinking many labels unnecessarily, we use
-  // canvas text measurement as a tie-breaker *only* in nowrap situations.
-  const _measureCtx = (() => {
-    try {
-      const c = document.createElement("canvas");
-      return c.getContext("2d");
-    } catch (_) {
-      return null;
-    }
-  })();
+  /* ====== FITTING / OVERFLOW CONTROL ======
+   Bucket typography sets target font sizes.
+   Then we verify the content fits; if not, we scale down the entire content as a last resort.
+   This ensures: 'always render' (no clipped text), even for worst-case inputs.
+*/
 
-  function measuredTextWidthPx(el) {
-    if (!_measureCtx || !el) return 0;
-    const cs = getComputedStyle(el);
-    // `font` is a computed shorthand (weight size family) suitable for canvas.
-    _measureCtx.font = cs.font;
-    return _measureCtx.measureText(el.textContent || "").width;
+  /* ====== FITTING / OVERFLOW CONTROL ======
+   Bucket typography sets target font sizes.
+   Then we verify the content fits; if not, we scale down the entire content as a last resort.
+   This ensures: 'always render' (no clipped text), even for worst-case inputs.
+
+   Regression note (2026-02):
+   Some edge-case labels still showed overflow after the PDF aspect-ratio fix. Root cause:
+   - A single child (e.g. description/ERP/footer) can overflow without increasing the parent's scrollWidth/scrollHeight
+     (depends on layout mode and browser rounding), so the old fit-check could miss it.
+   - The PDF capture path previously cloned DOM nodes, which can slightly change line wrapping in tight cases.
+   We therefore:
+   - detect overflow on key child elements, and
+   - verify the *visual* bounding box after scaling.
+*/
+  let textMeasureCtx = null;
+
+  function getTextMeasureCtx() {
+    if (textMeasureCtx) return textMeasureCtx;
+    const canvas = document.createElement("canvas");
+    textMeasureCtx = canvas.getContext("2d");
+    return textMeasureCtx;
   }
 
-  function cellOverflowsTight(el, epsPx = 0.25) {
-    if (!el) return false;
-    // First use cheap scroll metrics.
-    if (el.scrollWidth > el.clientWidth + 0.5) return true;
-    if (el.scrollHeight > el.clientHeight + 0.5) return true;
+  function measureNoWrapTextWidth(el) {
+    if (!el || typeof window.getComputedStyle !== "function") return null;
 
-    // Only do text measurement when the element is effectively nowrap.
-    const cs = getComputedStyle(el);
-    if (cs.whiteSpace !== "nowrap") return false;
+    const cs = window.getComputedStyle(el);
+    const whiteSpace = cs.whiteSpace || "";
+    if (!whiteSpace.includes("nowrap")) return null;
 
-    const w = measuredTextWidthPx(el);
-    return w > el.clientWidth - epsPx;
-  }
+    const ctx = getTextMeasureCtx();
+    if (!ctx) return null;
 
-  function fitsWithGuard(innerEl, guardX, guardY) {
-    const content = innerEl.querySelector(".label-content") || innerEl;
+    const rawText = (el.textContent || "").replace(/\s+/g, " ").trim();
+    if (!rawText) return 0;
 
-    // Detecteer overflow in grid-cellen (EAN/waarden)
-    const valOverflow = Array.from(
-      content.querySelectorAll(".specs-grid .val"),
-    ).some((v) => cellOverflowsTight(v));
-    if (valOverflow) return false;
+    let text = rawText;
+    if (cs.textTransform === "uppercase") text = text.toUpperCase();
+    else if (cs.textTransform === "lowercase") text = text.toLowerCase();
+
+    const font =
+      cs.font && cs.font !== ""
+        ? cs.font
+        : `${cs.fontStyle} ${cs.fontVariant} ${cs.fontWeight} ${cs.fontSize} / ${cs.lineHeight} ${cs.fontFamily}`;
+    ctx.font = font;
+
+    const glyphCount = Array.from(text).length;
+    const letterSpacing = parseFloat(cs.letterSpacing);
+    const extraLetterSpacing =
+      Number.isFinite(letterSpacing) && glyphCount > 1
+        ? letterSpacing * (glyphCount - 1)
+        : 0;
+
+    const spaceCount = (text.match(/ /g) || []).length;
+    const wordSpacing = parseFloat(cs.wordSpacing);
+    const extraWordSpacing =
+      Number.isFinite(wordSpacing) && spaceCount > 0
+        ? wordSpacing * spaceCount
+        : 0;
+
+    const padX =
+      (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
 
     return (
-      // guardX/guardY represent margin per side, so subtract twice for total usable space.
-      content.scrollWidth <= innerEl.clientWidth - 2 * guardX &&
-      content.scrollHeight <= innerEl.clientHeight - 2 * guardY
+      ctx.measureText(text).width + extraLetterSpacing + extraWordSpacing + padX
+    );
+  }
+
+  function elementOverflows(el, tol = 0.5) {
+    if (!el) return false;
+
+    if (
+      el.scrollWidth > el.clientWidth + tol ||
+      el.scrollHeight > el.clientHeight + tol
+    ) {
+      return true;
+    }
+
+    const measuredNoWrapWidth = measureNoWrapTextWidth(el);
+    return (
+      measuredNoWrapWidth != null && measuredNoWrapWidth > el.clientWidth + tol
+    );
+  }
+
+  function intrinsicFits(innerEl, guardX, guardY) {
+    const content = innerEl.querySelector(".label-content") || innerEl;
+
+    // Detect overflow in individual cells/blocks (these can overflow without affecting parent scroll metrics).
+    const watch = [
+      ...content.querySelectorAll(".specs-grid .val"),
+      ...content.querySelectorAll(".code-box"),
+      ...content.querySelectorAll(".label-desc"),
+      ...content.querySelectorAll(".footer-text"),
+    ];
+    if (watch.some((n) => elementOverflows(n))) return false;
+
+    const grid = content.querySelector(".specs-grid");
+    if (grid && elementOverflows(grid)) return false;
+
+    return (
+      content.scrollWidth <= innerEl.clientWidth - guardX * 2 &&
+      content.scrollHeight <= innerEl.clientHeight - guardY * 2
+    );
+  }
+
+  function visualFits(innerEl, guardX, guardY) {
+    const content = innerEl.querySelector(".label-content") || innerEl;
+
+    const ir = innerEl.getBoundingClientRect();
+    const cr = content.getBoundingClientRect();
+
+    // Tolerantie: we allow subpixel rounding drift.
+    const tol = 0.75;
+
+    return (
+      cr.left >= ir.left + guardX - tol &&
+      cr.right <= ir.right - guardX + tol &&
+      cr.top >= ir.top + guardY - tol &&
+      cr.bottom <= ir.bottom - guardY + tol
     );
   }
 
@@ -638,9 +800,8 @@
   function applyScaleFallback(innerEl, guardX, guardY) {
     const content = innerEl.querySelector(".label-content") || innerEl;
 
-    // guardX/guardY are per-side. Reserve both sides.
-    const availW = Math.max(1, innerEl.clientWidth - 2 * guardX);
-    const availH = Math.max(1, innerEl.clientHeight - 2 * guardY);
+    const availW = Math.max(1, innerEl.clientWidth - guardX * 2);
+    const availH = Math.max(1, innerEl.clientHeight - guardY * 2);
 
     const sw = Math.max(1, content.scrollWidth);
     const sh = Math.max(1, content.scrollHeight);
@@ -648,28 +809,67 @@
     let scaleW = availW / sw;
     let scaleH = availH / sh;
 
-    // Extra: corrigeer voor overflow die alleen in grid-cellen zichtbaar is
-    let scaleVal = 1;
-    content.querySelectorAll(".specs-grid .val").forEach((v) => {
-      const vCw = v.clientWidth;
-      const cs = getComputedStyle(v);
-      // For nowrap values, use measured width as a more precise signal.
-      if (cs.whiteSpace === "nowrap") {
-        const w = measuredTextWidthPx(v);
-        if (w > vCw - 0.25) {
-          scaleVal = Math.min(scaleVal, (vCw / Math.max(1, w)) * 0.995);
-        }
-      } else {
-        // Fallback to scroll metrics for wrapped values.
-        const vSw = v.scrollWidth;
-        if (vSw > vCw + 0.5) {
-          scaleVal = Math.min(scaleVal, (vCw / vSw) * 0.995);
-        }
+    // Corrigeer extra voor overflow in specifieke blokken (vals/desc/ERP/footer)
+    let scaleChild = 1;
+    const candidates = [
+      ...content.querySelectorAll(".specs-grid .val"),
+      ...content.querySelectorAll(".code-box"),
+      ...content.querySelectorAll(".label-desc"),
+      ...content.querySelectorAll(".footer-text"),
+    ];
+    candidates.forEach((el) => {
+      const elSw = el.scrollWidth;
+      const elCw = el.clientWidth;
+      if (elSw > elCw + 0.5) {
+        scaleChild = Math.min(scaleChild, elCw / elSw);
+      }
+      const measuredNoWrapWidth = measureNoWrapTextWidth(el);
+      if (measuredNoWrapWidth != null && measuredNoWrapWidth > elCw + 0.5) {
+        scaleChild = Math.min(scaleChild, elCw / measuredNoWrapWidth);
+      }
+      const elSh = el.scrollHeight;
+      const elCh = el.clientHeight;
+      if (elSh > elCh + 0.5) {
+        scaleChild = Math.min(scaleChild, elCh / elSh);
       }
     });
 
-    const k = Math.max(MIN_SCALE_K, Math.min(1, scaleW, scaleH, scaleVal));
+    const k = Math.max(MIN_SCALE_K, Math.min(1, scaleW, scaleH, scaleChild));
     content.style.setProperty("--k", String(k));
+    return k;
+  }
+
+  function ensureContentFits(innerEl, guardX, guardY) {
+    const content = innerEl.querySelector(".label-content") || innerEl;
+
+    // Reset fallback-scale bij nieuwe metingen
+    if (content) content.style.setProperty("--k", "1");
+
+    // 1) Intrinsic fit (no transform scaling needed)
+    if (intrinsicFits(innerEl, guardX, guardY)) {
+      if (content) content.style.setProperty("--k", "1");
+      return 1;
+    }
+
+    // 2) Apply fallback scaling (based on intrinsic scroll metrics)
+    let k = applyScaleFallback(innerEl, guardX, guardY);
+
+    // 3) Verify visual bounding box (after transforms). If still clipped, apply an extra safety factor.
+    if (!visualFits(innerEl, guardX, guardY)) {
+      const ir = innerEl.getBoundingClientRect();
+      const cr = content.getBoundingClientRect();
+
+      const availW = Math.max(1, ir.width - guardX * 2);
+      const availH = Math.max(1, ir.height - guardY * 2);
+
+      const extraW = availW / Math.max(1, cr.width);
+      const extraH = availH / Math.max(1, cr.height);
+      const extra = Math.min(1, extraW, extraH);
+
+      k = Math.max(MIN_SCALE_K, Math.min(1, k * extra * 0.995));
+      content.style.setProperty("--k", String(k));
+    }
+
     return k;
   }
 
@@ -698,23 +898,23 @@
       innerEl.classList.add("softwrap-mode");
     }
 
-    // Reset fallback-scale bij nieuwe metingen
-    const content = innerEl.querySelector(".label-content");
-    if (content) content.style.setProperty("--k", "1");
-
-    // 3) ensure desc is max 2 lines
+    // 3) ensure description stays within maxLines (wrap width matters per layout)
     syncDescWidthToSpecs(innerEl);
     shrinkDescToMaxLines(innerEl, 3);
 
-    // 4) final safety net: scale down whole content if needed
-    if (!fitsWithGuard(innerEl, guardX, guardY)) {
-      applyScaleFallback(innerEl, guardX, guardY);
-    } else {
-      if (content) content.style.setProperty("--k", "1");
-    }
+    // 4) final safety net: scale down whole content if needed (intrinsic + visual check)
+    ensureContentFits(innerEl, guardX, guardY);
   }
 
   async function mountThenFit(container) {
+    // Wait for fonts + layout. This improves stability of wrapping/line metrics in tight cases.
+    if (document.fonts && document.fonts.ready) {
+      try {
+        await document.fonts.ready;
+      } catch (_) {
+        /* ignore */
+      }
+    }
     await new Promise((r) => requestAnimationFrame(r));
     await new Promise((r) => requestAnimationFrame(r));
     fitAllIn(container);
@@ -726,7 +926,10 @@
     });
   }
 
-  /* ====== Build label DOM ====== */
+  /* ====== LABEL DOM CONSTRUCTION ======
+   createLabelEl() builds the DOM structure that CSS expects:
+     .label (size) -> .label-inner (layout + vars) -> .label-content (actual content)
+*/
 
   function buildSpecsGrid(values) {
     const grid = el("div", { class: "specs-grid" });
@@ -740,6 +943,8 @@
       el("div", { class: "val" }, `${values.gw || ""} KGS`),
       el("div", { class: "key" }, "CBM:"),
       el("div", { class: "val" }, values.cbm || ""),
+      el("div", { class: "key" }, "BATCH:"),
+      el("div", { class: "val" }, values.batch || ""),
     );
 
     return grid;
@@ -815,7 +1020,10 @@
     return wrap;
   }
 
-  /* ====== Preview render ====== */
+  /* ====== PREVIEW RENDERING ======
+   Renders 4 labels in a 2x2 grid.
+   Uses a computed previewScale so large labels still fit in the viewport.
+*/
   function computePreviewScale(sizes, containerEl) {
     const labelsGrid = containerEl || $("#labelsGrid");
     if (!labelsGrid) return 1;
@@ -836,6 +1044,14 @@
     const s = Math.min(sW, sH) * 0.98;
     return Math.max(0.08, Math.min(1, s));
   }
+
+  /**
+   * Renders the 4 labels into a target container (Single preview grid or offscreen batch host).
+   * Also updates the calculated dimensions table unless opts.renderDims === false.
+   * @param {object} values - Form values (dimensions + label fields)
+   * @param {object} [opts]
+   * @returns {Promise<{sizes:Array, scale:number, container:Element}|void>}
+   */
 
   async function renderPreviewFor(values, opts = {}) {
     const visibleGrid = $("#labelsGrid");
@@ -892,31 +1108,22 @@
       if (grid) {
         grid.innerHTML = "";
         grid.append(
-          el(
-            "div",
-            {
-              class: "preview-placeholder",
-              style: {
-                gridColumn: "1 / -1",
-                textAlign: "center",
-                padding: "28px 16px",
-                border: "1px dashed rgba(49, 60, 108, 0.35)",
-                borderRadius: "10px",
-                opacity: "0.8",
-              },
-            },
-            "Hier komt de preview",
-          ),
+          el("div", { class: "preview-placeholder" }, "Hier komt de preview"),
         );
       }
       if (dims) dims.innerHTML = "";
       return;
     }
 
-    await renderPreviewFor(vals);
+    await renderPreviewFor(vals, { showVariant: true });
   }
 
-  /* ====== jsPDF / html2canvas ====== */
+  /* ====== PDF GENERATION ======
+   1) Render labels (often offscreen) at a stable scale.
+   2) Capture each label DOM node to a canvas via html2canvas.
+   3) Rotate (labels are placed rotated in the PDF).
+   4) Add images to jsPDF with cm units for true-size output.
+*/
   function loadJsPDF() {
     return window.jspdf?.jsPDF;
   }
@@ -956,42 +1163,39 @@
     if (!src)
       throw new Error(`Label ${labelIdx} niet gevonden voor PDF-capture.`);
 
-    const clone = src.cloneNode(true);
+    // Ensure fonts are ready before capture (prevents late reflow that can change wrapping).
+    // document.fonts is widely supported in modern browsers; we guard it for older ones.
+    if (document.fonts && document.fonts.ready) {
+      try {
+        await document.fonts.ready;
+      } catch (_) {
+        /* ignore */
+      }
+    }
 
-    clone.style.borderTop = `${BORDER_PX}px solid #000`;
-    clone.style.borderRight = `${BORDER_PX}px solid #000`;
-    clone.style.borderBottom = `${BORDER_PX}px solid #000`;
-    clone.style.borderLeft = `${BORDER_PX}px solid #000`;
-
-    const host = document.createElement("div");
-    host.style.position = "fixed";
-    host.style.left = "-10000px";
-    host.style.top = "0";
-    host.style.background = "#fff";
-    host.style.padding = "0";
-    host.style.margin = "0";
-
-    document.body.appendChild(host);
-    host.appendChild(clone);
-
+    // Capture the *already fitted* DOM node directly. Cloning can subtly change layout
+    // (e.g. line-wrapping / subpixel rounding), which can reintroduce overflow in edge cases.
     const capScale = Math.max(
       2,
       window.devicePixelRatio || 1,
       1 / (currentPreviewScale || 1),
     );
 
-    const canvas = await html2canvas(clone, {
+    const canvas = await html2canvas(src, {
       scale: capScale,
       backgroundColor: "#ffffff",
       useCORS: true,
     });
 
     const rot = rotateCanvas90CW(canvas);
-
-    document.body.removeChild(host);
-
     return rot.toDataURL("image/png");
   }
+
+  /**
+   * Generates a single combined PDF for the current Single form values.
+   * Uses cm units in jsPDF so the output can be printed at 100% scale (true size).
+   * The Help tab contains vendor instructions: print at 100%, do not auto-scale.
+   */
 
   async function generatePDFSingle() {
     const JsPDF = loadJsPDF();
@@ -999,7 +1203,12 @@
     if (!window.html2canvas) throw new Error("html2canvas niet geladen");
 
     const vals = getFormValues();
-    const result = await renderPreviewFor(vals);
+    const pdfHost = ensurePdfRenderHost();
+    const result = await renderPreviewFor(vals, {
+      targetEl: pdfHost,
+      previewScale: 1,
+      renderDims: false,
+    });
     if (!result) throw new Error("Kon preview niet renderen voor PDF.");
     const { sizes, container } = result;
 
@@ -1039,7 +1248,11 @@
     pdf.save(buildPdfFileName(vals.code));
   }
 
-  /* ====== BATCH (Excel / CSV) ====== */
+  /* ====== BULK UPLOAD / BATCH ======
+   Parses an uploaded sheet and maps columns to required fields.
+   Validates all rows before generating any PDFs to avoid partial output.
+   Generates one PDF per row and bundles them in a ZIP.
+*/
   // Batch state
   let parsedRows = [];
   let isBatchRunning = false;
@@ -1081,11 +1294,447 @@
     if (batchRenderHost) return batchRenderHost;
     const host = document.createElement("div");
     host.id = "batchRenderHost";
-    host.className = "batch-render-host";
+    host.className = "batch-render-host pdf-mode";
     host.setAttribute("aria-hidden", "true");
     document.body.appendChild(host);
     batchRenderHost = host;
     return host;
+  }
+
+  // Dedicated off-screen render host for single-PDF generation.
+  // We render labels here with PDF-specific box model rules (see .pdf-mode in CSS),
+  // so html2canvas captures the correct physical aspect ratio (no padding/border expansion).
+  let pdfRenderHost = null;
+
+  function ensurePdfRenderHost() {
+    if (pdfRenderHost) return pdfRenderHost;
+    const host = document.createElement("div");
+    host.id = "pdfRenderHost";
+    host.className = "pdf-render-host pdf-mode";
+    host.setAttribute("aria-hidden", "true");
+    document.body.appendChild(host);
+    pdfRenderHost = host;
+    return host;
+  }
+
+  /* ====== PDF GEOMETRY SELF-TEST (regression guard) ======
+   Why this exists
+   - The generator depends on a DOM->canvas->PDF pipeline (html2canvas + jsPDF).
+   - A subtle box-model mismatch (content-box vs border-box) can introduce anisotropic scaling
+     in the embedded PNGs, which becomes visible only for extreme aspect ratios.
+   This self-test generates a curated edge-case set and validates:
+   (a) PDF MediaBox page size (true-size output), and
+   (b) embedded image pixel ratio (Width/Height) ≈ expected label ratio (H/W) within 0.2%.
+  */
+
+  const CM_TO_PT = 72 / 2.54; // PDF points per centimeter
+  const PDF_GEOMETRY_RATIO_TOL_REL = 0.002; // 0.2% relative tolerance
+  const PDF_GEOMETRY_PAGE_TOL_PT = 0.5; // ~0.18mm tolerance on MediaBox
+
+  // Curated edge-case set:
+  // - Small H (5–15cm) with large L/W
+  // - Small L/W with large H
+  // - Boundaries (5 and 100)
+  // - A few decimal dimensions to exercise rounding
+  const PDF_GEOMETRY_EDGE_CASES = [
+    // Small H, large L/W
+    { name: "H05_L120_W120", len: 120, wid: 120, hei: 5 },
+    { name: "H05_L120_W60", len: 120, wid: 60, hei: 5 },
+    { name: "H06_L90_W30", len: 90, wid: 30, hei: 6 },
+    { name: "H08_L80_W20", len: 80, wid: 20, hei: 8 },
+    { name: "H10_L120_W60", len: 120, wid: 60, hei: 10 },
+    { name: "H12_L70_W25", len: 70, wid: 25, hei: 12 },
+    { name: "H15_L120_W40", len: 120, wid: 40, hei: 15 },
+
+    // Small L/W, large H
+    { name: "L05_W05_H120", len: 5, wid: 5, hei: 120 },
+    { name: "L06_W10_H120", len: 6, wid: 10, hei: 120 },
+    { name: "L10_W15_H80", len: 10, wid: 15, hei: 80 },
+    { name: "L12_W12_H70", len: 12, wid: 12, hei: 70 },
+
+    // Very narrow / very wide faces (within allowed 5–120cm)
+    { name: "L120_W05_H15", len: 120, wid: 5, hei: 15 },
+    { name: "L05_W120_H15", len: 5, wid: 120, hei: 15 },
+
+    // Square-ish / stable baselines
+    { name: "L50_W50_H50", len: 50, wid: 50, hei: 50 },
+    { name: "L25_W25_H10", len: 25, wid: 25, hei: 10 },
+
+    // Decimals / rounding surfaces
+    { name: "L63_5_W47_2_H12_3", len: 63.5, wid: 47.2, hei: 12.3 },
+    { name: "L99_9_W5_1_H14_9", len: 99.9, wid: 5.1, hei: 14.9 },
+  ];
+  // Stress strings for layout overflow regression (long tokens + hyphens + unicode dash).
+  const PDF_LAYOUT_STRESS_DESC =
+    "8719327417447 - BarDeluxe - 5-piece - Boston - Black / Slow Juicer – Cherry Red";
+  const PDF_LAYOUT_STRESS_EAN = "8719327417447";
+
+  function _pdfLayoutCheck(container) {
+    const issues = [];
+    for (let i = 1; i <= 4; i++) {
+      const inner = container?.querySelector(`#label${i} .label-inner`);
+      if (!inner) continue;
+
+      const w = inner.clientWidth;
+      const h = inner.clientHeight;
+      const guardX = Math.max(2, w * 0.015);
+      const guardY = Math.max(2, h * 0.015);
+
+      // After renderPreviewFor, fitAllIn() already ran. We validate that nothing is clipped.
+      const ok =
+        visualFits(inner, guardX, guardY) &&
+        ![
+          ...inner.querySelectorAll(
+            ".specs-grid .val, .code-box, .label-desc, .footer-text",
+          ),
+        ].some((n) => elementOverflows(n));
+
+      if (!ok) {
+        issues.push({
+          label: i,
+          bucketKey: inner.dataset.bucketKey || "",
+          layout: inner.dataset.layout || "",
+          w,
+          h,
+        });
+      }
+    }
+    return issues;
+  }
+
+  function _pdfGeomRelDiff(a, b) {
+    const denom = Math.abs(b) > 0 ? Math.abs(b) : 1;
+    return Math.abs(a - b) / denom;
+  }
+
+  function _pdfGeomFmtPct(x) {
+    return `${(x * 100).toFixed(3)}%`;
+  }
+
+  function _pdfGeomDecodePdfText(arrayBuffer) {
+    // We only need ASCII tokens (MediaBox, Width/Height). UTF-8 decoding is sufficient.
+    try {
+      return new TextDecoder("iso-8859-1").decode(new Uint8Array(arrayBuffer));
+    } catch {
+      return new TextDecoder("utf-8").decode(new Uint8Array(arrayBuffer));
+    }
+  }
+
+  function _pdfGeomExtractMediaBoxPt(pdfText) {
+    // Match first MediaBox: [x0 y0 x1 y1]
+    const re =
+      /\/MediaBox\s*\[\s*([0-9.+-]+)\s+([0-9.+-]+)\s+([0-9.+-]+)\s+([0-9.+-]+)\s*\]/;
+    const m = re.exec(pdfText);
+    if (!m) return null;
+    const x0 = parseFloat(m[1]);
+    const y0 = parseFloat(m[2]);
+    const x1 = parseFloat(m[3]);
+    const y1 = parseFloat(m[4]);
+    if (![x0, y0, x1, y1].every(Number.isFinite)) return null;
+    return { w: x1 - x0, h: y1 - y0, raw: { x0, y0, x1, y1 } };
+  }
+
+  function _pdfGeomExtractTopImageRatios(pdfText, topN = 4) {
+    const hits = [];
+    const re = /\/Subtype\s*\/Image\b/g;
+    let m;
+    while ((m = re.exec(pdfText))) {
+      const chunk = pdfText.slice(m.index, m.index + 2500);
+      const wm = /\/Width\s+(\d+)/.exec(chunk);
+      const hm = /\/Height\s+(\d+)/.exec(chunk);
+      if (!wm || !hm) continue;
+      const w = parseInt(wm[1], 10);
+      const h = parseInt(hm[1], 10);
+      if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0)
+        continue;
+      hits.push({ w, h, area: w * h, ratio: w / h });
+    }
+    hits.sort((a, b) => b.area - a.area);
+    return hits.slice(0, topN);
+  }
+
+  async function _buildPdfArrayBufferForValues(vals, opts = {}) {
+    const JsPDF = loadJsPDF();
+    if (!JsPDF) throw new Error("jsPDF niet geladen");
+    if (!window.html2canvas) throw new Error("html2canvas niet geladen");
+
+    const pdfHost = ensurePdfRenderHost();
+
+    // Self-test uses fixed previewScale=1 for stable capture geometry.
+    const result = await renderPreviewFor(vals, {
+      targetEl: pdfHost,
+      previewScale: 1,
+      renderDims: false,
+      showVariant: false,
+    });
+    if (!result)
+      throw new Error("Kon preview niet renderen voor PDF self-test.");
+
+    const { sizes, container } = result;
+    const layoutIssues = _pdfLayoutCheck(container);
+    const order = [1, 3, 2, 4];
+
+    const pageW = Math.max(...sizes.map((s) => s.h)) + PDF_MARGIN_CM * 2;
+    const pageH = sizes.reduce((sum, s) => sum + s.w, 0) + PDF_MARGIN_CM * 2;
+
+    // Disable compression for deterministic, parse-friendly output.
+    const pdf = new JsPDF({
+      unit: "cm",
+      orientation: "portrait",
+      format: [pageW, pageH],
+      compress: false,
+    });
+
+    let y = PDF_MARGIN_CM;
+
+    for (const idx of order) {
+      const s = sizes[idx - 1];
+      const imgData = await captureLabelToRotatedPng(idx, container);
+
+      // Rotated placement: width = H, height = W
+      pdf.addImage(
+        imgData,
+        "PNG",
+        PDF_MARGIN_CM,
+        y,
+        s.h,
+        s.w,
+        undefined,
+        "FAST",
+      );
+      y += s.w;
+    }
+
+    const expectedRatios = order.map((idx) => {
+      const s = sizes[idx - 1];
+      // Rotated PNG ratio in PDF should be H/W
+      return s.h / s.w;
+    });
+
+    const arrayBuffer = pdf.output("arraybuffer");
+    return {
+      arrayBuffer,
+      layoutIssues,
+      expected: { pageWcm: pageW, pageHcm: pageH, ratios: expectedRatios },
+      pdf, // optional (debug)
+    };
+  }
+
+  async function runPdfGeometrySelfTestUI() {
+    const btnRun = $("#btnRunPdfGeometryTest");
+    const btnDl = $("#btnDownloadPdfGeometryFailures");
+    const summaryEl = $("#pdfGeometryTestSummary");
+    const logEl = $("#pdfGeometryTestLog");
+
+    if (!btnRun || !summaryEl || !logEl) return;
+
+    const setBusy = (busy) => {
+      btnRun.disabled = !!busy;
+      btnRun.textContent = busy ? "Test draait…" : "Run PDF geometry test";
+      if (busy && btnDl) {
+        btnDl.disabled = true;
+        btnDl.dataset.ready = "";
+        btnDl.onclick = null;
+      }
+    };
+
+    const logLine = (msg, cls) => {
+      const div = document.createElement("div");
+      if (cls) div.className = cls;
+      div.textContent = msg;
+      logEl.appendChild(div);
+      logEl.scrollTop = logEl.scrollHeight;
+    };
+
+    // Reset UI
+    logEl.textContent = "";
+    summaryEl.textContent = "";
+    setBusy(true);
+
+    const failures = [];
+    let pass = 0;
+    let fail = 0;
+
+    try {
+      logLine(
+        `Start PDF geometry self-test: ${PDF_GEOMETRY_EDGE_CASES.length} cases…`,
+      );
+
+      for (let i = 0; i < PDF_GEOMETRY_EDGE_CASES.length; i++) {
+        const tc = PDF_GEOMETRY_EDGE_CASES[i];
+        const code = `SELFTEST_${tc.name}`;
+
+        const vals = {
+          code,
+          desc: PDF_LAYOUT_STRESS_DESC,
+          ean: PDF_LAYOUT_STRESS_EAN,
+          qty: "1",
+          gw: "0",
+          cbm: "0",
+          len: tc.len,
+          wid: tc.wid,
+          hei: tc.hei,
+          batch: "",
+        };
+
+        // Hard guard: keep cases within allowed ranges.
+        // (If someone edits the list incorrectly, we want a clear error.)
+        const dims = [vals.len, vals.wid, vals.hei];
+        if (
+          dims.some(
+            (d) => !Number.isFinite(d) || d < BOX_CM_MIN || d > BOX_CM_MAX,
+          )
+        ) {
+          throw new Error(`Edge-case buiten bereik (5–120cm): ${tc.name}`);
+        }
+
+        const { arrayBuffer, expected, layoutIssues } =
+          await _buildPdfArrayBufferForValues(vals);
+
+        if (layoutIssues && layoutIssues.length) {
+          fail++;
+          failures.push({
+            case: tc.name,
+            kind: "LAYOUT_OVERFLOW",
+            details: layoutIssues,
+          });
+          logLine(
+            `FAIL ${tc.name}: layout overflow in labels ${layoutIssues
+              .map((x) => x.label)
+              .join(", ")}`,
+            "fail",
+          );
+          continue;
+        }
+
+        const txt = _pdfGeomDecodePdfText(arrayBuffer);
+        const mb = _pdfGeomExtractMediaBoxPt(txt);
+        const imgs = _pdfGeomExtractTopImageRatios(txt, 4);
+
+        // Page size check (MediaBox)
+        const expWpt = expected.pageWcm * CM_TO_PT;
+        const expHpt = expected.pageHcm * CM_TO_PT;
+
+        let ok = true;
+        let reason = [];
+
+        if (!mb) {
+          ok = false;
+          reason.push("MediaBox niet gevonden");
+        } else {
+          const dw = Math.abs(mb.w - expWpt);
+          const dh = Math.abs(mb.h - expHpt);
+          if (dw > PDF_GEOMETRY_PAGE_TOL_PT || dh > PDF_GEOMETRY_PAGE_TOL_PT) {
+            ok = false;
+            reason.push(
+              `MediaBox mismatch: ΔW=${dw.toFixed(2)}pt, ΔH=${dh.toFixed(2)}pt`,
+            );
+          }
+        }
+
+        // Image ratio check (PNG Width/Height ≈ expected H/W within 0.2%)
+        if (!imgs.length) {
+          ok = false;
+          reason.push("Geen images gevonden");
+        } else {
+          // We validate that every embedded top image ratio matches at least one expected ratio,
+          // and that every expected ratio is represented by at least one embedded ratio.
+          const actualRatios = imgs.map((x) => x.ratio);
+          const expectedRatios = expected.ratios;
+
+          const matchesExpected = (ar) =>
+            expectedRatios.some(
+              (er) => _pdfGeomRelDiff(ar, er) <= PDF_GEOMETRY_RATIO_TOL_REL,
+            );
+          const coversActual = actualRatios.every(matchesExpected);
+
+          const coversExpected = expectedRatios.every((er) =>
+            actualRatios.some(
+              (ar) => _pdfGeomRelDiff(ar, er) <= PDF_GEOMETRY_RATIO_TOL_REL,
+            ),
+          );
+
+          if (!coversActual || !coversExpected) {
+            ok = false;
+
+            // Provide a useful delta readout: best match per expected ratio
+            const deltas = expectedRatios.map((er) => {
+              const best = Math.min(
+                ...actualRatios.map((ar) => _pdfGeomRelDiff(ar, er)),
+              );
+              return best;
+            });
+
+            reason.push(
+              `Image ratio mismatch (tol=${_pdfGeomFmtPct(PDF_GEOMETRY_RATIO_TOL_REL)}). ` +
+                `bestΔ per expected: [${deltas.map(_pdfGeomFmtPct).join(", ")}]`,
+            );
+          }
+        }
+
+        if (ok) {
+          pass++;
+          logLine(
+            `OK  ${tc.name}  (L=${tc.len}, W=${tc.wid}, H=${tc.hei})`,
+            "ok",
+          );
+        } else {
+          fail++;
+          logLine(
+            `ERR ${tc.name}  (L=${tc.len}, W=${tc.wid}, H=${tc.hei})  -> ${reason.join(" | ")}`,
+            "err",
+          );
+          failures.push({
+            name: tc.name,
+            vals,
+            arrayBuffer,
+            reason: reason.join(" | "),
+          });
+        }
+
+        // Yield to UI
+        await new Promise((r) => setTimeout(r, 0));
+      }
+
+      summaryEl.textContent = `Resultaat: ${pass} OK, ${fail} fouten.`;
+      if (failures.length && window.JSZip && btnDl) {
+        btnDl.disabled = false;
+        btnDl.dataset.ready = "1";
+        btnDl.onclick = async () => {
+          const zip = new JSZip();
+          const stamp = buildTimestamp().replace(/[:]/g, ".");
+          const folder = zip.folder(`pdf-geometry-failures - ${stamp}`);
+
+          failures.forEach((f, idx) => {
+            const blob = new Blob([f.arrayBuffer], { type: "application/pdf" });
+            folder.file(
+              `${String(idx + 1).padStart(2, "0")} - ${f.name}.pdf`,
+              blob,
+            );
+            folder.file(
+              `${String(idx + 1).padStart(2, "0")} - ${f.name}.txt`,
+              f.reason,
+            );
+          });
+
+          const zipBlob = await zip.generateAsync({ type: "blob" });
+          downloadBlob(zipBlob, `pdf-geometry-failures - ${stamp}.zip`);
+        };
+      }
+    } catch (err) {
+      summaryEl.textContent = `Self-test afgebroken: ${err.message || err}`;
+      logLine(String(err?.stack || err?.message || err), "err");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function initPdfGeometrySelfTestUI() {
+    const btnRun = $("#btnRunPdfGeometryTest");
+    if (!btnRun) return; // UI not present (future: separate builds)
+    btnRun.addEventListener("click", () => {
+      runPdfGeometrySelfTestUI().catch((e) => alert(e.message || e));
+    });
   }
 
   function resetLog() {
@@ -1379,6 +2028,14 @@
     downloadBlob(blob, "etiketten-template.xlsx");
   }
 
+  /**
+   * Wires the Bulk upload UI:
+   * - Drag/drop + file picker
+   * - Column mapping dropdowns
+   * - Preview of first rows
+   * - Run/Abort generation with progress + log
+   */
+
   function initBatchUI() {
     dropzone = $("#dropzone");
     fileInput = $("#fileInput");
@@ -1624,7 +2281,12 @@
     });
   }
 
-  /* ====== init ====== */
+  /* ====== INIT ======
+   Entry point on DOMContentLoaded.
+   - Loads bucket config (optional; app still works with fallback fitting)
+   - Initializes tabs and batch UI
+   - Wires Single buttons (Preview, Clear, PDF)
+*/
   async function init() {
     try {
       BUCKET_CONFIG = await loadBucketConfig("./labelBuckets.json");
@@ -1637,77 +2299,17 @@
 
     initTabs();
     initBatchUI();
+    initPdfGeometrySelfTestUI();
 
     initSingleBoxValidation();
     const btnGen = $("#btnGen");
     const btnPDF = $("#btnPDF");
-    const btnClear = $("#btnClear");
 
     const safeRender = () => {
       if (!validateSingleBoxFields()) return;
       renderSingle().catch((err) => alert(err.message || err));
     };
     btnGen?.addEventListener("click", safeRender);
-
-    btnClear?.addEventListener("click", (ev) => {
-      // Clear all Single inputs + results
-      ev?.preventDefault?.();
-      ev?.stopPropagation?.();
-
-      const ids = [
-        "len",
-        "wid",
-        "hei",
-        "gw",
-        "cbm",
-        "erp",
-        "desc",
-        "ean",
-        "qty",
-        "batch",
-      ];
-      ids.forEach((id) => {
-        const input = $("#" + id);
-        if (!input) return;
-
-        input.value = "";
-
-        // Clear validation UI (only if present)
-        input.classList.remove("is-invalid");
-        input.removeAttribute("aria-invalid");
-        const host = input.closest(".field") || input.parentElement;
-        const errEl = host?.querySelector(
-          `.field-error[data-for="${input.id}"]`,
-        );
-        if (errEl) errEl.textContent = "";
-      });
-
-      // Reset preview + calculated dims to the empty state
-      const grid = $("#labelsGrid");
-      const dims = $("#dims");
-
-      if (grid) {
-        grid.innerHTML = "";
-        grid.append(
-          el(
-            "div",
-            {
-              class: "preview-placeholder",
-              style: {
-                gridColumn: "1 / -1",
-                textAlign: "center",
-                padding: "28px 16px",
-                border: "1px dashed rgba(49, 60, 108, 0.35)",
-                borderRadius: "10px",
-                opacity: "0.8",
-              },
-            },
-            "Hier komt de preview",
-          ),
-        );
-      }
-      if (dims) dims.innerHTML = "";
-    });
 
     btnPDF?.addEventListener("click", async () => {
       try {
